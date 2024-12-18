@@ -31,7 +31,7 @@ COPY migrations/ ./migrations/
 COPY alembic.ini ./
 
 # Install dependencies
-RUN poetry install --no-dev --no-interaction --no-ansi
+RUN poetry install --only main --no-interaction --no-ansi
 
 # Create non-root user
 RUN useradd -m -u 1000 app \
