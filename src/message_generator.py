@@ -1,4 +1,4 @@
-from openai import OpenAI
+import openai
 import random
 from tenacity import retry, stop_after_attempt, wait_exponential, RetryError
 from typing import Optional, Dict, List, TypedDict
@@ -14,7 +14,7 @@ class MessageGenerator:
     
     def __init__(self, api_key: str):
         """Initialize with OpenAI API key."""
-        self.client = OpenAI(api_key=api_key)
+        openai.api_key = api_key
         self.fallback_messages = [
             "Believe in yourself! Every day is a new opportunity to shine.",
             "You are stronger than you know and braver than you believe.",
@@ -41,7 +41,7 @@ class MessageGenerator:
         prompt = self._build_prompt(context)
         system_message = self._build_system_message(context)
         
-        response = self.client.chat.completions.create(
+        response = openai.ChatCompletion.create(
             model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": system_message},
@@ -63,7 +63,7 @@ class MessageGenerator:
         """Generate a response to a user's inbound message."""
         try:
             system_message = self._build_system_message(context)
-            response = self.client.chat.completions.create(
+            response = openai.ChatCompletion.create(
                 model="gpt-4o-mini",
                 messages=[
                     {"role": "system", "content": system_message},
