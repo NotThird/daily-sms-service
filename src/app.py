@@ -3,6 +3,7 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from twilio.request_validator import RequestValidator
 from twilio.twiml.messaging_response import MessagingResponse
+from flask_apscheduler import APScheduler
 import logging
 from logging.config import dictConfig
 from datetime import datetime
@@ -31,20 +32,26 @@ dictConfig({
 })
 
 app = Flask(__name__)
+scheduler = APScheduler()
 
 # Configure SQLAlchemy
 app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL', 'postgresql://localhost/sms_app')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
+# Configure APScheduler
+app.config['SCHEDULER_API_ENABLED'] = False
+app.config['SCHEDULER_TIMEZONE'] = 'UTC'
+
 # Initialize SQLAlchemy
 db = SQLAlchemy()
 
-# Import models after db initialization
-from .models import Base, Recipient, UserConfig, MessageLog
+# Import models and services
+from .models import Base, Recipient, UserConfig, MessageLog, ScheduledMessage
 from .message_generator import MessageGenerator
 from .sms_service import SMSService
 from .user_config_service import UserConfigService
 from .onboarding_service import OnboardingService
+from .scheduler import MessageScheduler
 
 # Initialize app with SQLAlchemy
 db.init_app(app)
@@ -66,6 +73,40 @@ except ValueError as e:
     app.logger.error(f"Failed to initialize SMS service: {str(e)}")
     sms_service = None
 
+# Initialize message scheduler
+message_scheduler = MessageScheduler(db.session, message_generator, sms_service)
+
+# Schedule background tasks
+@scheduler.task('cron', id='schedule_messages', hour=0, minute=0)
+def schedule_daily_messages():
+    """Schedule messages for all active recipients."""
+    with app.app_context():
+        try:
+            result = message_scheduler.schedule_daily_messages()
+            app.logger.info(f"Daily message scheduling complete: {result}")
+        except Exception as e:
+            app.logger.error(f"Error in daily message scheduling: {str(e)}")
+
+@scheduler.task('interval', id='process_messages', minutes=5)
+def process_scheduled_messages():
+    """Process scheduled messages that are due."""
+    with app.app_context():
+        try:
+            result = message_scheduler.process_scheduled_messages()
+            app.logger.info(f"Message processing complete: {result}")
+        except Exception as e:
+            app.logger.error(f"Error in message processing: {str(e)}")
+
+@scheduler.task('cron', id='cleanup_records', hour=1, minute=0)
+def cleanup_old_records():
+    """Clean up old records daily."""
+    with app.app_context():
+        try:
+            result = message_scheduler.cleanup_old_records()
+            app.logger.info(f"Database cleanup complete: {result}")
+        except Exception as e:
+            app.logger.error(f"Error in database cleanup: {str(e)}")
+
 def validate_twilio_request(f):
     """Decorator to validate incoming Twilio requests."""
     def decorated_function(*args, **kwargs):
@@ -76,7 +117,6 @@ def validate_twilio_request(f):
 
         validator = RequestValidator(os.getenv('TWILIO_AUTH_TOKEN'))
         
-        # Get the request URL and POST data
         request_valid = validator.validate(
             request.url,
             request.form,
@@ -101,13 +141,11 @@ def update_user_config():
         if not phone_number:
             return jsonify({'error': 'Phone number is required'}), 400
 
-        # Get recipient
         recipient = Recipient.query.filter_by(phone_number=phone_number).first()
         
         if not recipient:
             return jsonify({'error': 'Recipient not found'}), 404
 
-        # Update user config
         config = user_config_service.create_or_update_config(
             recipient_id=recipient.id,
             name=data.get('name'),
@@ -145,28 +183,24 @@ def handle_inbound_message():
         body = request.form['Body'].strip()
         upper_body = body.upper()
         
-        # Validate phone number
         if not sms_service.validate_phone_number(from_number):
             app.logger.error(f"Invalid phone number received: {from_number}")
             return jsonify({'error': 'Invalid phone number'}), 400
         
-        # Get or create recipient
         recipient = Recipient.query.filter_by(phone_number=from_number).first()
         
         is_new_user = False
         if not recipient:
             app.logger.info(f"Creating new recipient for {from_number}")
-            # New recipient
             recipient = Recipient(
                 phone_number=from_number,
-                timezone='UTC',  # Default timezone
+                timezone='UTC',
                 is_active=True
             )
             db.session.add(recipient)
-            db.session.flush()  # Get the ID without committing
+            db.session.flush()
             is_new_user = True
         
-        # Log the inbound message
         message_log = MessageLog(
             recipient_id=recipient.id,
             message_type='inbound',
@@ -175,7 +209,6 @@ def handle_inbound_message():
         )
         db.session.add(message_log)
         
-        # Handle commands
         resp = MessagingResponse()
         if upper_body == 'STOP':
             app.logger.info(f"Processing STOP command for {from_number}")
@@ -190,25 +223,19 @@ def handle_inbound_message():
             response_text = "Welcome back! You'll start receiving daily positive messages again."
             
         else:
-            # Check if user needs onboarding
             if is_new_user or not onboarding_service.is_onboarding_complete(recipient.id):
                 app.logger.info(f"Handling onboarding for user {recipient.id}")
-                # Handle onboarding flow
                 if is_new_user or not onboarding_service.is_in_onboarding(recipient.id):
-                    # Start onboarding for new users
                     response_text = onboarding_service.start_onboarding(recipient.id)
                     app.logger.info(f"Started onboarding for user {recipient.id}")
                 else:
-                    # Process onboarding response
                     response_text, is_complete = onboarding_service.process_response(recipient.id, body)
                     app.logger.info(f"Processed onboarding response for user {recipient.id}, complete: {is_complete}")
             else:
                 app.logger.info(f"Processing regular message for user {recipient.id}")
-                # Regular message handling for onboarded users
                 user_context = user_config_service.get_gpt_prompt_context(recipient.id)
                 response_text = message_generator.generate_response(body, user_context)
             
-        # Send and log the response
         app.logger.info(f"Sending response: {response_text}")
         resp.message(response_text)
         send_result = sms_service.send_message(from_number, response_text)
@@ -243,20 +270,17 @@ def handle_status_callback():
         app.logger.info("Received status callback")
         app.logger.debug(f"Status callback data: {request.form}")
 
-        # Process the status update
         status_result = sms_service.process_delivery_status(request.form)
         
         if not status_result['processed']:
             app.logger.error(f"Failed to process status callback: {status_result.get('error')}")
             return jsonify({'error': 'Failed to process status'}), 400
         
-        # Update message log
         message_log = MessageLog.query.filter_by(
             twilio_sid=status_result['message_sid']
         ).first()
         
         if message_log:
-            # Get detailed message status
             status_details = sms_service.get_message_status(status_result['message_sid'])
             
             message_log.status = status_details['status']
@@ -279,17 +303,19 @@ def handle_status_callback():
 def health_check():
     """Health check endpoint."""
     try:
-        # Test database connection
         db.session.execute('SELECT 1')
-        
-        # Test SMS service
         sms_service_status = "healthy" if sms_service else "unhealthy"
+        scheduler_status = "healthy" if scheduler.running else "unhealthy"
         
         return jsonify({
-            'status': 'healthy' if sms_service_status == "healthy" else 'degraded',
+            'status': 'healthy' if all([
+                sms_service_status == "healthy",
+                scheduler_status == "healthy"
+            ]) else 'degraded',
             'components': {
                 'database': 'healthy',
-                'sms_service': sms_service_status
+                'sms_service': sms_service_status,
+                'scheduler': scheduler_status
             },
             'timestamp': datetime.utcnow().isoformat()
         })
@@ -300,5 +326,18 @@ def health_check():
             'error': str(e)
         }), 500
 
+def init_app():
+    """Initialize the Flask application."""
+    with app.app_context():
+        # Initialize database
+        db.create_all()
+        
+        # Start scheduler
+        scheduler.init_app(app)
+        scheduler.start()
+        
+        app.logger.info("Application initialized successfully")
+
 if __name__ == '__main__':
+    init_app()
     app.run(host='0.0.0.0', port=int(os.getenv('PORT', 5000)))
