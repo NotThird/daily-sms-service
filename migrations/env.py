@@ -4,7 +4,6 @@ import os
 from sqlalchemy import engine_from_config
 from sqlalchemy import pool
 from alembic import context
-from urllib.parse import quote_plus
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -21,12 +20,7 @@ target_metadata = Base.metadata
 
 def get_url():
     """Get database URL from environment variable."""
-    user = "postgres"
-    password = quote_plus("postgres123")  # URL encode the password
-    host = "localhost"
-    port = "5432"
-    database = "daily_positivity"
-    return f"postgresql://{user}:{password}@{host}:{port}/{database}"
+    return os.getenv("DATABASE_URL")
 
 def run_migrations_offline() -> None:
     """Run migrations in 'offline' mode.
