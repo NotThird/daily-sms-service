@@ -4,7 +4,6 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 from typing import Optional, Dict
 import logging
 import time
-import urllib3
 import ssl
 
 logger = logging.getLogger(__name__)
@@ -19,22 +18,13 @@ class SMSService:
         """
         if not all([account_sid, auth_token, from_number]):
             raise ValueError("Missing required credentials")
-        
-        # Configure SSL context
-        ssl_context = ssl.create_default_context()
-        ssl_context.minimum_version = ssl.TLSVersion.TLSv1_2
-        
-        # Configure HTTP client with SSL settings
-        http_client = urllib3.PoolManager(
-            ssl_version=ssl.PROTOCOL_TLSv1_2,
-            cert_reqs=ssl.CERT_REQUIRED,
-            ssl_context=ssl_context
-        )
             
         self.client = Client(
             account_sid, 
             auth_token,
-            http_client=http_client
+            http_client_options={
+                "ssl_version": ssl.PROTOCOL_TLSv1_2
+            }
         )
         self.from_number = from_number
         
