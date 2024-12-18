@@ -1,0 +1,30 @@
+[tool.poetry]
+name = "daily-positivity"
+version = "0.1.0"
+description = "Daily AI-generated positive SMS messages using GPT-4 and Twilio"
+authors = ["Your Name <your.email@example.com>"]
+
+[tool.poetry.dependencies]
+python = "^3.9"
+Flask = "^2.3.3"
+SQLAlchemy = "^2.0.20"
+psycopg2-binary = "^2.9.7"
+python-dotenv = "^1.0.0"
+openai = "^0.28.0"
+twilio = "^8.5.0"
+pytz = "^2023.3"
+alembic = "^1.12.0"
+gunicorn = "^21.2.0"
+requests = "^2.31.0"
+python-json-logger = "^2.0.7"
+tenacity = "^8.2.3"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^7.4.2"
+black = "^23.7.0"
+flake8 = "^6.1.0"
+pytest-cov = "^4.1.0"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
