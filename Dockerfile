@@ -24,14 +24,19 @@ RUN apt-get update \
 RUN curl -sSL https://install.python-poetry.org | python3 -
 ENV PATH="${POETRY_HOME}/bin:${PATH}"
 
-# Copy project files
-COPY pyproject.toml poetry.lock ./
-COPY src/ ./src/
-COPY migrations/ ./migrations/
-COPY alembic.ini ./
+# Copy only pyproject.toml first to leverage Docker cache
+COPY pyproject.toml ./
+
+# Generate fresh poetry.lock
+RUN poetry lock
 
 # Install dependencies
 RUN poetry install --only main --no-interaction --no-ansi
+
+# Copy the rest of the application
+COPY src/ ./src/
+COPY migrations/ ./migrations/
+COPY alembic.ini ./
 
 # Create non-root user
 RUN useradd -m -u 1000 app \
