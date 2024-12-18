@@ -10,7 +10,8 @@ ENV PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
     POETRY_VERSION=1.4.2 \
     POETRY_HOME="/opt/poetry" \
-    POETRY_VIRTUALENVS_CREATE=false
+    POETRY_VIRTUALENVS_CREATE=false \
+    PYTHONPATH=/app
 
 # Install system dependencies
 RUN apt-get update \
@@ -24,27 +25,18 @@ RUN apt-get update \
 RUN curl -sSL https://install.python-poetry.org | python3 -
 ENV PATH="${POETRY_HOME}/bin:${PATH}"
 
-# Copy only pyproject.toml first to leverage Docker cache
-COPY pyproject.toml ./
+# Copy the entire project
+COPY . .
 
-# Generate fresh poetry.lock
-RUN poetry lock
-
-# Install dependencies
-RUN poetry install --only main --no-interaction --no-ansi
-
-# Copy the rest of the application
-COPY src/ ./src/
-COPY migrations/ ./migrations/
-COPY alembic.ini ./
+# Generate fresh poetry.lock and install dependencies
+RUN poetry lock && poetry install --only main --no-interaction --no-ansi
 
 # Create non-root user
 RUN useradd -m -u 1000 app \
     && chown -R app:app /app
 USER app
 
-# Set up entrypoint script
-COPY --chown=app:app docker-entrypoint.sh ./
+# Make entrypoint script executable
 RUN chmod +x docker-entrypoint.sh
 
 # Default command (can be overridden)
