@@ -8,9 +8,10 @@ WORKDIR /app
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
-    POETRY_VERSION=1.4.2 \
+    POETRY_VERSION=1.6.1 \
     POETRY_HOME="/opt/poetry" \
     POETRY_VIRTUALENVS_CREATE=false \
+    POETRY_NO_INTERACTION=1 \
     PYTHONPATH=/app
 
 # Install system dependencies
@@ -19,17 +20,23 @@ RUN apt-get update \
         curl \
         build-essential \
         libpq-dev \
+        git \
+        procps \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Poetry
 RUN curl -sSL https://install.python-poetry.org | python3 -
 ENV PATH="${POETRY_HOME}/bin:${PATH}"
 
-# Copy the entire project
-COPY . .
+# Copy just the dependency files first
+COPY pyproject.toml poetry.lock ./
 
-# Generate fresh poetry.lock and install dependencies
-RUN poetry lock && poetry install --only main --no-interaction --no-ansi
+# Install dependencies with caching
+RUN --mount=type=cache,target=/root/.cache/pypoetry \
+    poetry install --only main --no-interaction --no-ansi
+
+# Copy the rest of the application
+COPY . .
 
 # Create non-root user
 RUN useradd -m -u 1000 app \
@@ -38,6 +45,10 @@ USER app
 
 # Make entrypoint script executable
 RUN chmod +x docker-entrypoint.sh
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:${PORT:-5000}/health || exit 1
 
 # Default command (can be overridden)
 ENTRYPOINT ["./docker-entrypoint.sh"]

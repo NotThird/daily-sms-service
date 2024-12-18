@@ -4,6 +4,7 @@ import os
 from sqlalchemy import engine_from_config
 from sqlalchemy import pool
 from alembic import context
+from flask import current_app
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -12,11 +13,6 @@ config = context.config
 # Setup logging
 logger = logging.getLogger('alembic.env')
 logging.basicConfig(level=logging.INFO)
-
-# add your model's MetaData object here
-# for 'autogenerate' support
-from src.models import Base
-target_metadata = Base.metadata
 
 def get_url():
     """Get database URL from environment variable."""
@@ -36,7 +32,7 @@ def run_migrations_offline() -> None:
     url = get_url()
     context.configure(
         url=url,
-        target_metadata=target_metadata,
+        target_metadata=current_app.extensions['migrate'].db.metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
     )
@@ -51,17 +47,18 @@ def run_migrations_online() -> None:
     In this scenario we need to create an Engine
     and associate a connection with the context.
     """
-    configuration = config.get_section(config.config_ini_section)
-    configuration["sqlalchemy.url"] = get_url()
-    connectable = engine_from_config(
-        configuration,
-        prefix="sqlalchemy.",
-        poolclass=pool.NullPool,
-    )
+    # Handle the case where we're running migrations through flask db migrate
+    # vs. through alembic directly
+    db_config = config.get_section(config.config_ini_section)
+    if db_config:
+        db_config["sqlalchemy.url"] = get_url()
+
+    connectable = current_app.extensions['migrate'].db.engine
 
     with connectable.connect() as connection:
         context.configure(
-            connection=connection, target_metadata=target_metadata
+            connection=connection,
+            target_metadata=current_app.extensions['migrate'].db.metadata
         )
 
         with context.begin_transaction():

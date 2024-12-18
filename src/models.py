@@ -1,70 +1,57 @@
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, DateTime, Boolean, Text, create_engine, Float, JSON
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
+from flask_sqlalchemy import SQLAlchemy
 
-Base = declarative_base()
+db = SQLAlchemy()
 
-class Recipient(Base):
+class Recipient(db.Model):
     """Represents a message recipient with opt-in/out status."""
     __tablename__ = 'recipients'
 
-    id = Column(Integer, primary_key=True)
-    phone_number = Column(String(20), unique=True, nullable=False)
-    timezone = Column(String(50), nullable=False)
-    is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    id = db.Column(db.Integer, primary_key=True)
+    phone_number = db.Column(db.String(20), unique=True, nullable=False)
+    timezone = db.Column(db.String(50), nullable=False)
+    is_active = db.Column(db.Boolean, default=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-class UserConfig(Base):
+class UserConfig(db.Model):
     """Stores user configuration and personalization settings."""
     __tablename__ = 'user_configs'
 
-    id = Column(Integer, primary_key=True)
-    recipient_id = Column(Integer, nullable=False)
-    name = Column(String(100), nullable=True)
-    email = Column(String(255), nullable=True)
-    preferences = Column(JSON, nullable=False, default={})  # Stores GPT prompt preferences
-    personal_info = Column(JSON, nullable=False, default={})  # Stores additional personal info
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    id = db.Column(db.Integer, primary_key=True)
+    recipient_id = db.Column(db.Integer, nullable=False)
+    name = db.Column(db.String(100), nullable=True)
+    email = db.Column(db.String(255), nullable=True)
+    preferences = db.Column(db.JSON, nullable=False, default={})  # Stores GPT prompt preferences
+    personal_info = db.Column(db.JSON, nullable=False, default={})  # Stores additional personal info
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-class MessageLog(Base):
+class MessageLog(db.Model):
     """Logs all sent and received messages with detailed delivery information."""
     __tablename__ = 'message_logs'
 
-    id = Column(Integer, primary_key=True)
-    recipient_id = Column(Integer, nullable=False)
-    message_type = Column(String(20), nullable=False)  # 'outbound' or 'inbound'
-    content = Column(Text, nullable=False)
-    status = Column(String(20), nullable=False)  # 'queued', 'sent', 'delivered', 'failed', etc.
-    sent_at = Column(DateTime, default=datetime.utcnow)
-    delivered_at = Column(DateTime, nullable=True)
-    twilio_sid = Column(String(50), nullable=True)
-    error_message = Column(Text, nullable=True)
-    price = Column(Float, nullable=True)
-    price_unit = Column(String(10), nullable=True)
-    direction = Column(String(20), nullable=True)  # 'outbound-api', 'inbound', etc.
+    id = db.Column(db.Integer, primary_key=True)
+    recipient_id = db.Column(db.Integer, nullable=False)
+    message_type = db.Column(db.String(20), nullable=False)  # 'outbound' or 'inbound'
+    content = db.Column(db.Text, nullable=False)
+    status = db.Column(db.String(20), nullable=False)  # 'queued', 'sent', 'delivered', 'failed', etc.
+    sent_at = db.Column(db.DateTime, default=datetime.utcnow)
+    delivered_at = db.Column(db.DateTime, nullable=True)
+    twilio_sid = db.Column(db.String(50), nullable=True)
+    error_message = db.Column(db.Text, nullable=True)
+    price = db.Column(db.Float, nullable=True)
+    price_unit = db.Column(db.String(10), nullable=True)
+    direction = db.Column(db.String(20), nullable=True)  # 'outbound-api', 'inbound', etc.
 
-class ScheduledMessage(Base):
+class ScheduledMessage(db.Model):
     """Tracks scheduled messages for the day."""
     __tablename__ = 'scheduled_messages'
 
-    id = Column(Integer, primary_key=True)
-    recipient_id = Column(Integer, nullable=False)
-    scheduled_time = Column(DateTime, nullable=False)
-    status = Column(String(20), default='pending')  # 'pending', 'sent', 'failed'
-    created_at = Column(DateTime, default=datetime.utcnow)
-    sent_at = Column(DateTime, nullable=True)
-    error_message = Column(Text, nullable=True)
-
-def init_db(database_url):
-    """Initialize database connection and create tables."""
-    engine = create_engine(database_url)
-    Base.metadata.create_all(engine)
-    return sessionmaker(bind=engine)
-
-def get_db_session(database_url):
-    """Get a new database session."""
-    Session = init_db(database_url)
-    return Session()
+    id = db.Column(db.Integer, primary_key=True)
+    recipient_id = db.Column(db.Integer, nullable=False)
+    scheduled_time = db.Column(db.DateTime, nullable=False)
+    status = db.Column(db.String(20), default='pending')  # 'pending', 'sent', 'failed'
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    sent_at = db.Column(db.DateTime, nullable=True)
+    error_message = db.Column(db.Text, nullable=True)

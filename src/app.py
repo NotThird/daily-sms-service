@@ -1,5 +1,4 @@
 from flask import Flask, request, jsonify
-from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from twilio.request_validator import RequestValidator
 from twilio.twiml.messaging_response import MessagingResponse
@@ -42,20 +41,19 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SCHEDULER_API_ENABLED'] = False
 app.config['SCHEDULER_TIMEZONE'] = 'UTC'
 
-# Initialize SQLAlchemy
-db = SQLAlchemy()
+# Import models and initialize db
+from .models import db, Recipient, UserConfig, MessageLog, ScheduledMessage
 
-# Import models and services
-from .models import Base, Recipient, UserConfig, MessageLog, ScheduledMessage
+# Initialize app with SQLAlchemy and Migrate
+db.init_app(app)
+migrate = Migrate(app, db)
+
+# Import services after db initialization
 from .message_generator import MessageGenerator
 from .sms_service import SMSService
 from .user_config_service import UserConfigService
 from .onboarding_service import OnboardingService
 from .scheduler import MessageScheduler
-
-# Initialize app with SQLAlchemy
-db.init_app(app)
-migrate = Migrate(app, db)
 
 # Initialize services
 message_generator = MessageGenerator(os.getenv('OPENAI_API_KEY'))

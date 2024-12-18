@@ -25,9 +25,9 @@ case "$1" in
         # Wait for database before starting web server
         wait_for_db
         
-        # Run migrations
+        # Run migrations using Flask-Migrate
         echo "Running database migrations..."
-        poetry run alembic upgrade head
+        poetry run flask db upgrade
         
         # Start Gunicorn with the combined web service and scheduler
         echo "Starting web server with integrated scheduler..."
