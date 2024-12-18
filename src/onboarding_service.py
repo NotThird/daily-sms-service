@@ -12,7 +12,6 @@ class OnboardingService:
     # Define onboarding steps and their questions
     ONBOARDING_STEPS = {
         'name': "Hi! Welcome to our service. What's your name?",
-        'email': "Thanks! What's your email address?",
         'timezone': "What city are you in? We'll use this to set your timezone.",
         'preferences': "Would you like to receive messages in the morning (M) or evening (E)?",
         'confirmation': "Great! You're all set up. Reply Y to confirm and start receiving messages."
@@ -64,13 +63,6 @@ class OnboardingService:
             # Process the response based on current step
             if current_step == 'name':
                 config.name = message
-                config.preferences['onboarding_step'] = 'email'
-                next_message = self.ONBOARDING_STEPS['email']
-                
-            elif current_step == 'email':
-                if '@' not in message:
-                    return "Please provide a valid email address.", False
-                config.email = message
                 config.preferences['onboarding_step'] = 'timezone'
                 next_message = self.ONBOARDING_STEPS['timezone']
                 

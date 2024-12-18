@@ -207,7 +207,6 @@ def handle_inbound_message():
         )
         db.session.add(message_log)
         
-        resp = MessagingResponse()
         if upper_body == 'STOP':
             app.logger.info(f"Processing STOP command for {from_number}")
             recipient.is_active = False
@@ -235,7 +234,6 @@ def handle_inbound_message():
                 response_text = message_generator.generate_response(body, user_context)
             
         app.logger.info(f"Sending response: {response_text}")
-        resp.message(response_text)
         send_result = sms_service.send_message(from_number, response_text)
         
         response_log = MessageLog(
@@ -251,7 +249,7 @@ def handle_inbound_message():
         db.session.add(response_log)
         
         db.session.commit()
-        return str(resp)
+        return jsonify({'status': 'success'})
         
     except Exception as e:
         app.logger.error(f"Error handling inbound message: {str(e)}")
