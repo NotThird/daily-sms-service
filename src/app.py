@@ -1,13 +1,15 @@
 from flask import Flask, request, jsonify
 from flask_migrate import Migrate
 from twilio.request_validator import RequestValidator
-from twilio.twiml.messaging_response import MessagingResponse
 from flask_apscheduler import APScheduler
 import logging
 from logging.config import dictConfig
 from datetime import datetime
 import pytz
 import os
+
+# Configure SSL for Twilio
+os.environ['TWILIO_SSL_VALIDATION'] = 'ignore'
 
 # Configure logging
 dictConfig({
