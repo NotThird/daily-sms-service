@@ -56,7 +56,10 @@ class OnboardingService:
     ONBOARDING_STEPS = {
         'name': "Hi! Welcome to our service. What's your name?",
         'timezone': "What city are you in? We'll use this to set your timezone.",
-        'preferences': "Would you like to receive messages in the morning (M) or evening (E)?",
+        'occupation': "What's your occupation or profession? This helps us personalize messages.",
+        'interests': "What are your main interests or hobbies? (separate multiple with commas)",
+        'style': "What communication style do you prefer? Reply with:\nC for Casual\nP for Professional",
+        'timing': "Would you like to receive messages in the morning (M) or evening (E)?",
         'confirmation': "Great! You're all set up. Reply Y to confirm and start receiving messages."
     }
 
@@ -140,21 +143,43 @@ class OnboardingService:
                     # Update Recipient's timezone
                     recipient.timezone = timezone_str
                     
-                    config.preferences['onboarding_step'] = 'preferences'
-                    next_message = self.ONBOARDING_STEPS['preferences']
+                    config.preferences['onboarding_step'] = 'occupation'
+                    next_message = self.ONBOARDING_STEPS['occupation']
                     logger.info(f"User {recipient_id} provided valid city: {message} (timezone: {timezone_str}), moving to preferences step")
                 except Exception as e:
                     logger.error(f"Error validating timezone: {str(e)}")
                     return "Sorry, there was an error setting your timezone. Please try another major US city.", False
                 
-            elif current_step == 'preferences':
+            elif current_step == 'occupation':
+                config.personal_info['occupation'] = message
+                config.preferences['onboarding_step'] = 'interests'
+                next_message = self.ONBOARDING_STEPS['interests']
+                logger.info(f"User {recipient_id} provided occupation: {message}, moving to interests step")
+
+            elif current_step == 'interests':
+                interests = [interest.strip() for interest in message.split(',')]
+                config.personal_info['interests'] = interests
+                config.preferences['onboarding_step'] = 'style'
+                next_message = self.ONBOARDING_STEPS['style']
+                logger.info(f"User {recipient_id} provided interests: {interests}, moving to style step")
+
+            elif current_step == 'style':
+                if message.upper() not in ['C', 'P']:
+                    logger.info(f"User {recipient_id} provided invalid style: {message}")
+                    return "Please reply with C for Casual or P for Professional.", False
+                config.preferences['communication_style'] = 'casual' if message.upper() == 'C' else 'professional'
+                config.preferences['onboarding_step'] = 'timing'
+                next_message = self.ONBOARDING_STEPS['timing']
+                logger.info(f"User {recipient_id} provided style preference: {message}, moving to timing step")
+
+            elif current_step == 'timing':
                 if message.upper() not in ['M', 'E']:
-                    logger.info(f"User {recipient_id} provided invalid preference: {message}")
+                    logger.info(f"User {recipient_id} provided invalid timing: {message}")
                     return "Please reply with M for morning or E for evening.", False
                 config.preferences['message_time'] = 'morning' if message.upper() == 'M' else 'evening'
                 config.preferences['onboarding_step'] = 'confirmation'
                 next_message = self.ONBOARDING_STEPS['confirmation']
-                logger.info(f"User {recipient_id} provided preference: {message}, moving to confirmation step")
+                logger.info(f"User {recipient_id} provided timing preference: {message}, moving to confirmation step")
                 
             elif current_step == 'confirmation':
                 if message.upper() != 'Y':

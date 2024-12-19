@@ -21,13 +21,12 @@ def cli():
 @cli.command()
 @click.option('--phone', prompt='Phone number', help='User phone number (e.g., +1234567890)')
 @click.option('--name', prompt='Name', help='User name')
-@click.option('--email', prompt='Email (optional)', default='', help='User email')
 @click.option('--timezone', prompt='Timezone', default='UTC', help='User timezone')
 @click.option('--style', prompt='Communication style', type=click.Choice(['casual', 'professional', 'friendly'], case_sensitive=False))
 @click.option('--topics', prompt='Preferred topics (comma-separated)', help='E.g., motivation,health,mindfulness')
 @click.option('--occupation', prompt='Occupation', help='User occupation')
 @click.option('--hobbies', prompt='Hobbies (comma-separated)', help='E.g., reading,hiking,gaming')
-def configure(phone, name, email, timezone, style, topics, occupation, hobbies):
+def configure(phone, name, timezone, style, topics, occupation, hobbies):
     """Configure a user with all their details in one go."""
     session = get_db_session()
     user_config_service = UserConfigService(session)
@@ -65,7 +64,6 @@ def configure(phone, name, email, timezone, style, topics, occupation, hobbies):
         config = user_config_service.create_or_update_config(
             recipient_id=recipient.id,
             name=name,
-            email=email if email else None,
             preferences=preferences,
             personal_info=personal_info
         )
@@ -77,7 +75,6 @@ def configure(phone, name, email, timezone, style, topics, occupation, hobbies):
         click.echo("="*50)
         click.echo(f"Phone: {phone}")
         click.echo(f"Name: {name}")
-        click.echo(f"Email: {email or 'Not set'}")
         click.echo(f"Timezone: {timezone}")
         click.echo("\nPreferences:")
         click.echo(f"  Style: {style}")
@@ -119,7 +116,6 @@ def list_users(phone):
             
             if config:
                 click.echo(f"Name: {config.name or 'Not set'}")
-                click.echo(f"Email: {config.email or 'Not set'}")
                 if config.preferences:
                     click.echo("\nPreferences:")
                     for k, v in config.preferences.items():

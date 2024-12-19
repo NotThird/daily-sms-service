@@ -14,14 +14,12 @@ def test_create_config(db_session):
     config = service.create_or_update_config(
         recipient_id=recipient.id,
         name="Test User",
-        email="test@example.com",
         preferences={"language": "en", "topics": ["tech", "science"]},
         personal_info={"age": 25, "occupation": "developer"}
     )
 
     assert config.recipient_id == recipient.id
     assert config.name == "Test User"
-    assert config.email == "test@example.com"
     assert config.preferences == {"language": "en", "topics": ["tech", "science"]}
     assert config.personal_info == {"age": 25, "occupation": "developer"}
 

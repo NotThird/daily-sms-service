@@ -34,20 +34,30 @@ def test_process_responses(db_session):
     
     # Test name step
     message, complete = service.process_response(recipient.id, "John Doe")
-    assert message == service.ONBOARDING_STEPS['email']
-    assert not complete
-    
-    # Test email step
-    message, complete = service.process_response(recipient.id, "john@example.com")
     assert message == service.ONBOARDING_STEPS['timezone']
     assert not complete
     
     # Test timezone step
     message, complete = service.process_response(recipient.id, "New York")
-    assert message == service.ONBOARDING_STEPS['preferences']
+    assert message == service.ONBOARDING_STEPS['occupation']
     assert not complete
     
-    # Test preferences step
+    # Test occupation step
+    message, complete = service.process_response(recipient.id, "Software Engineer")
+    assert message == service.ONBOARDING_STEPS['interests']
+    assert not complete
+    
+    # Test interests step
+    message, complete = service.process_response(recipient.id, "coding, hiking, reading")
+    assert message == service.ONBOARDING_STEPS['style']
+    assert not complete
+    
+    # Test style step
+    message, complete = service.process_response(recipient.id, "C")
+    assert message == service.ONBOARDING_STEPS['timing']
+    assert not complete
+    
+    # Test timing step
     message, complete = service.process_response(recipient.id, "M")
     assert message == service.ONBOARDING_STEPS['confirmation']
     assert not complete
@@ -60,14 +70,16 @@ def test_process_responses(db_session):
     # Verify final state
     config = db_session.query(UserConfig).filter_by(recipient_id=recipient.id).first()
     assert config.name == "John Doe"
-    assert config.email == "john@example.com"
     assert config.personal_info['city'] == "New York"
+    assert config.personal_info['occupation'] == "Software Engineer"
+    assert config.personal_info['interests'] == ["coding", "hiking", "reading"]
+    assert config.preferences['communication_style'] == 'casual'
     assert config.preferences['message_time'] == 'morning'
     assert config.preferences['onboarding_complete'] is True
     assert 'onboarding_step' not in config.preferences
 
-def test_invalid_email(db_session):
-    """Test handling invalid email during onboarding."""
+def test_invalid_city(db_session):
+    """Test handling invalid city during onboarding."""
     recipient = Recipient(phone_number='+1234567890', timezone='UTC', is_active=True)
     db_session.add(recipient)
     db_session.flush()
@@ -78,17 +90,17 @@ def test_invalid_email(db_session):
     # Process name
     service.process_response(recipient.id, "John Doe")
     
-    # Try invalid email
-    message, complete = service.process_response(recipient.id, "invalid-email")
-    assert "valid email" in message.lower()
+    # Try invalid city
+    message, complete = service.process_response(recipient.id, "Invalid City")
+    assert "don't recognize that city" in message
     assert not complete
     
-    # Config should still be in email step
+    # Config should still be in timezone step
     config = db_session.query(UserConfig).filter_by(recipient_id=recipient.id).first()
-    assert config.preferences['onboarding_step'] == 'email'
+    assert config.preferences['onboarding_step'] == 'timezone'
 
-def test_invalid_preference(db_session):
-    """Test handling invalid preference selection."""
+def test_invalid_style(db_session):
+    """Test handling invalid communication style selection."""
     recipient = Recipient(phone_number='+1234567890', timezone='UTC', is_active=True)
     db_session.add(recipient)
     db_session.flush()
@@ -96,19 +108,71 @@ def test_invalid_preference(db_session):
     service = OnboardingService(db_session)
     service.start_onboarding(recipient.id)
     
-    # Get to preferences step
+    # Get to style step
     service.process_response(recipient.id, "John Doe")
-    service.process_response(recipient.id, "john@example.com")
     service.process_response(recipient.id, "New York")
+    service.process_response(recipient.id, "Software Engineer")
+    service.process_response(recipient.id, "coding, hiking")
     
-    # Try invalid preference
+    # Try invalid style
+    message, complete = service.process_response(recipient.id, "X")
+    assert "C for Casual or P for Professional" in message
+    assert not complete
+    
+    # Config should still be in style step
+    config = db_session.query(UserConfig).filter_by(recipient_id=recipient.id).first()
+    assert config.preferences['onboarding_step'] == 'style'
+
+def test_invalid_timing(db_session):
+    """Test handling invalid timing preference."""
+    recipient = Recipient(phone_number='+1234567890', timezone='UTC', is_active=True)
+    db_session.add(recipient)
+    db_session.flush()
+    
+    service = OnboardingService(db_session)
+    service.start_onboarding(recipient.id)
+    
+    # Get to timing step
+    service.process_response(recipient.id, "John Doe")
+    service.process_response(recipient.id, "New York")
+    service.process_response(recipient.id, "Software Engineer")
+    service.process_response(recipient.id, "coding, hiking")
+    service.process_response(recipient.id, "C")
+    
+    # Try invalid timing
     message, complete = service.process_response(recipient.id, "X")
     assert "M for morning or E for evening" in message
     assert not complete
     
-    # Config should still be in preferences step
+    # Config should still be in timing step
     config = db_session.query(UserConfig).filter_by(recipient_id=recipient.id).first()
-    assert config.preferences['onboarding_step'] == 'preferences'
+    assert config.preferences['onboarding_step'] == 'timing'
+
+def test_invalid_confirmation(db_session):
+    """Test handling invalid confirmation response."""
+    recipient = Recipient(phone_number='+1234567890', timezone='UTC', is_active=True)
+    db_session.add(recipient)
+    db_session.flush()
+    
+    service = OnboardingService(db_session)
+    service.start_onboarding(recipient.id)
+    
+    # Get to confirmation step
+    service.process_response(recipient.id, "John Doe")
+    service.process_response(recipient.id, "New York")
+    service.process_response(recipient.id, "Software Engineer")
+    service.process_response(recipient.id, "coding, hiking")
+    service.process_response(recipient.id, "C")
+    service.process_response(recipient.id, "M")
+    
+    # Try invalid confirmation
+    message, complete = service.process_response(recipient.id, "N")
+    assert "reply Y to confirm" in message.lower()
+    assert not complete
+    
+    # Config should still be in confirmation step
+    config = db_session.query(UserConfig).filter_by(recipient_id=recipient.id).first()
+    assert config.preferences['onboarding_step'] == 'confirmation'
 
 def test_is_onboarding_complete(db_session):
     """Test checking onboarding completion status."""
@@ -124,8 +188,10 @@ def test_is_onboarding_complete(db_session):
     # Complete onboarding
     service.start_onboarding(recipient.id)
     service.process_response(recipient.id, "John Doe")
-    service.process_response(recipient.id, "john@example.com")
     service.process_response(recipient.id, "New York")
+    service.process_response(recipient.id, "Software Engineer")
+    service.process_response(recipient.id, "coding, hiking")
+    service.process_response(recipient.id, "C")
     service.process_response(recipient.id, "M")
     service.process_response(recipient.id, "Y")
     
@@ -149,7 +215,6 @@ def test_is_in_onboarding(db_session):
     
     # Complete onboarding
     service.process_response(recipient.id, "John Doe")
-    service.process_response(recipient.id, "john@example.com")
     service.process_response(recipient.id, "New York")
     service.process_response(recipient.id, "M")
     service.process_response(recipient.id, "Y")

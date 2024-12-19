@@ -7,6 +7,7 @@ from logging.config import dictConfig
 from datetime import datetime
 import pytz
 import os
+from .rate_limiter import limiter
 
 # Configure SSL for Twilio
 os.environ['TWILIO_SSL_VALIDATION'] = 'ignore'
@@ -34,6 +35,9 @@ dictConfig({
 
 app = Flask(__name__)
 scheduler = APScheduler()
+
+# Initialize rate limiter
+limiter.init_app(app)
 
 # Configure SQLAlchemy
 app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL', 'postgresql://localhost/sms_app')
@@ -75,6 +79,17 @@ except ValueError as e:
 
 # Initialize message scheduler
 message_scheduler = MessageScheduler(db.session, message_generator, sms_service)
+
+# Error handlers
+@app.errorhandler(429)
+def ratelimit_handler(e):
+    """Handle rate limit exceeded errors."""
+    app.logger.warning(f"Rate limit exceeded: {str(e)}")
+    return jsonify({
+        'error': 'Rate limit exceeded',
+        'message': str(e),
+        'retry_after': e.description
+    }), 429
 
 # Schedule background tasks
 @scheduler.task('cron', id='schedule_messages', hour=0, minute=0)
@@ -132,6 +147,7 @@ def validate_twilio_request(f):
     return decorated_function
 
 @app.route('/api/user-config', methods=['POST'])
+@limiter.limit("30/minute")  # Limit user config updates
 def update_user_config():
     """Update user configuration."""
     try:
@@ -149,7 +165,6 @@ def update_user_config():
         config = user_config_service.create_or_update_config(
             recipient_id=recipient.id,
             name=data.get('name'),
-            email=data.get('email'),
             preferences=data.get('preferences'),
             personal_info=data.get('personal_info')
         )
@@ -158,7 +173,6 @@ def update_user_config():
             'message': 'Configuration updated successfully',
             'config': {
                 'name': config.name,
-                'email': config.email,
                 'preferences': config.preferences,
                 'personal_info': config.personal_info
             }
@@ -170,6 +184,7 @@ def update_user_config():
 
 @app.route('/webhook/inbound', methods=['POST'], endpoint='handle_inbound')
 @validate_twilio_request
+@limiter.limit("60/minute")  # Limit inbound messages
 def handle_inbound_message():
     """Handle incoming SMS messages."""
     try:
@@ -259,6 +274,7 @@ def handle_inbound_message():
 
 @app.route('/webhook/status', methods=['POST'], endpoint='handle_status')
 @validate_twilio_request
+@limiter.limit("120/minute")  # Higher limit for status callbacks
 def handle_status_callback():
     """Handle SMS delivery status callbacks."""
     try:
@@ -298,6 +314,7 @@ def handle_status_callback():
         return jsonify({'error': 'Internal server error'}), 500
 
 @app.route('/health', methods=['GET'], endpoint='health_check')
+@limiter.exempt  # No rate limit for health checks
 def health_check():
     """Health check endpoint."""
     try:

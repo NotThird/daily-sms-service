@@ -4,6 +4,7 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 from typing import Optional, Dict
 import logging
 import time
+from .rate_limiter import rate_limit_sms
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +32,7 @@ class SMSService:
             raise ValueError(error_msg)
         
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
+    @rate_limit_sms()
     def send_message(self, to_number: str, message: str) -> Dict:
         """
         Send an SMS message using Twilio with enhanced status checking.
@@ -109,6 +111,7 @@ class SMSService:
         
         return status_info
 
+    @rate_limit_sms()
     def validate_phone_number(self, phone_number: str) -> bool:
         """
         Validate if a phone number is in correct format.
@@ -158,6 +161,7 @@ class SMSService:
                 'processed': False
             }
 
+    @rate_limit_sms()
     def get_message_status(self, message_sid: str) -> Dict:
         """
         Get detailed status information for a message by SID.

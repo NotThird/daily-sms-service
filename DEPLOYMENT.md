@@ -11,6 +11,7 @@ This guide provides instructions for deploying the Daily Positivity SMS Service 
    - Auth Token
    - Phone number
 4. GitHub repository with your code
+5. (Optional) Redis instance for distributed rate limiting
 
 ## Cost-Effective Infrastructure Setup
 
@@ -34,7 +35,22 @@ Note: Free tier limitations
 - Restarts on first connection
 - These limitations are acceptable for a gift service
 
-### 2. Combined Web Service Setup
+### 2. Redis Setup (Optional)
+
+For distributed rate limiting, you can use either:
+
+1. Render Redis (Minimal Cost):
+   - Go to "New +" > "Redis"
+   - Name: `daily-positivity-redis`
+   - Instance Type: "Starter" ($7/month)
+   - Region: Same as other services
+
+2. Memory-based Rate Limiting (Free):
+   - Uses in-memory storage (default)
+   - Works for single-instance deployments
+   - No additional setup required
+
+### 3. Combined Web Service Setup
 
 Instead of separate workers, we'll use background tasks within the web service.
 
@@ -51,18 +67,32 @@ Instead of separate workers, we'll use background tasks within the web service.
 
 4. Add Environment Variables:
    ```
+   # Flask Configuration
    FLASK_ENV=production
    FLASK_DEBUG=0
    DATABASE_URL=postgres://... (Internal Database URL from step 1)
+
+   # API Keys
    OPENAI_API_KEY=your_openai_api_key
    TWILIO_ACCOUNT_SID=your_twilio_sid
    TWILIO_AUTH_TOKEN=your_twilio_token
    TWILIO_FROM_NUMBER=your_twilio_number
+
+   # Webhooks
    TWILIO_STATUS_CALLBACK_URL=https://daily-positivity.onrender.com/webhook/status
+
+   # Application Settings
    LOG_LEVEL=INFO
    DEFAULT_TIMEZONE=UTC
    MESSAGE_WINDOW_START=12
    MESSAGE_WINDOW_END=17
+
+   # Rate Limiting
+   OPENAI_TOKENS_PER_MIN=10000
+   OPENAI_REQUESTS_PER_MIN=50
+   TWILIO_MESSAGES_PER_DAY=1000
+   TWILIO_MESSAGES_PER_SECOND=1
+   REDIS_URL=redis://... (Optional: Redis URL if using distributed rate limiting)
    ```
 
 5. Click "Create Web Service"
@@ -81,7 +111,8 @@ Instead of separate workers, we'll use background tasks within the web service.
 Minimal costs:
 - PostgreSQL (Free Tier): $0/month
 - Web Service (Starter): $7/month
-Total: $7/month
+- Redis (Optional): $7/month
+Total: $7-14/month
 
 Additional costs to consider:
 - OpenAI API usage (pay as you go)
@@ -99,6 +130,12 @@ Free tier considerations:
 - Backup your data periodically (no automatic backups on free tier)
 - Service pauses after 1 hour of inactivity
 - Will restart automatically on first connection
+
+### 3. Rate Limiting Monitoring
+- Monitor rate limit logs in application logs
+- Watch for 429 (Too Many Requests) errors
+- Check Redis memory usage if using distributed rate limiting
+- Adjust rate limits based on usage patterns
 
 ## Troubleshooting
 
@@ -119,28 +156,41 @@ Free tier considerations:
    - Verify environment variables
    - Check database connectivity
 
+4. Rate Limiting Issues
+   - Check rate limit configuration
+   - Monitor rate limit logs
+   - Verify Redis connection if using distributed rate limiting
+   - Adjust limits if needed
+
 ## Maintenance
 
 ### Regular Tasks
 
 1. Monitor logs for errors
 2. Check database usage (stay within 1GB limit)
-3. Every 90 days:
-   - Export database data
-   - Create new database instance
-   - Import data
-   - Update DATABASE_URL in web service
+3. Monitor rate limit metrics
+4. Every 90 days:
+   ```bash
+   # Run database migration script
+   python scripts/migrate_render_db.py \
+     --source-url <old-db-url> \
+     --target-url <new-db-url> \
+     --admin-url <admin-db-url> \
+     --db-name daily_positivity
+   ```
 
 ## Deployment Checklist
 
 Before going live:
 1. [ ] Database created (free tier)
-2. [ ] Web service deployed (starter tier)
-3. [ ] Environment variables set
-4. [ ] Twilio webhooks configured
-5. [ ] Test message flow end-to-end
-6. [ ] Document production URLs
-7. [ ] Set calendar reminder for 90-day database renewal
+2. [ ] Redis configured (if using distributed rate limiting)
+3. [ ] Web service deployed (starter tier)
+4. [ ] Environment variables set (including rate limits)
+5. [ ] Twilio webhooks configured
+6. [ ] Test message flow end-to-end
+7. [ ] Document production URLs
+8. [ ] Set calendar reminder for 90-day database renewal
+9. [ ] Configure monitoring for rate limits
 
 ## Cost Optimization Tips
 
@@ -148,4 +198,6 @@ Before going live:
 2. Keep database size small
 3. Clean up old messages regularly
 4. Use efficient queries
-5. Implement rate limiting if needed
+5. Adjust rate limits based on actual usage
+6. Consider in-memory rate limiting if Redis cost is prohibitive
+7. Monitor and optimize Redis memory usage if applicable

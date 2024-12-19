@@ -21,7 +21,6 @@ class UserConfig(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     recipient_id = db.Column(db.Integer, nullable=False)
     name = db.Column(db.String(100), nullable=True)
-    email = db.Column(db.String(255), nullable=True)
     preferences = db.Column(db.JSON, nullable=False, default={})  # Stores GPT prompt preferences
     personal_info = db.Column(db.JSON, nullable=False, default={})  # Stores additional personal info
     created_at = db.Column(db.DateTime, default=datetime.utcnow)

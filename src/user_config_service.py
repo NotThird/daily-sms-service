@@ -10,7 +10,6 @@ class UserConfigService:
         self,
         recipient_id: int,
         name: Optional[str] = None,
-        email: Optional[str] = None,
         preferences: Optional[Dict] = None,
         personal_info: Optional[Dict] = None
     ) -> UserConfig:
@@ -23,7 +22,6 @@ class UserConfigService:
             config = UserConfig(
                 recipient_id=recipient_id,
                 name=name,
-                email=email,
                 preferences=preferences or {},
                 personal_info=personal_info or {}
             )
@@ -31,8 +29,6 @@ class UserConfigService:
         else:
             if name is not None:
                 config.name = name
-            if email is not None:
-                config.email = email
             if preferences is not None:
                 config.preferences = preferences
             if personal_info is not None:

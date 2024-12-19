@@ -2,6 +2,7 @@ import openai
 import random
 from tenacity import retry, stop_after_attempt, wait_exponential, RetryError
 from typing import Optional, Dict, List, TypedDict
+from .rate_limiter import rate_limit_openai
 
 class UserContext(TypedDict, total=False):
     user_name: str
@@ -35,6 +36,7 @@ class MessageGenerator:
             return self._get_fallback_message()
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
+    @rate_limit_openai(estimated_tokens=300)  # System message + prompt + response
     def _try_generate_message(self, context: Optional[UserContext] = None) -> str:
         """Internal method to attempt message generation with retries."""
         # Construct the prompt with any context
@@ -59,6 +61,7 @@ class MessageGenerator:
         return self._validate_and_clean_message(message)
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
+    @rate_limit_openai(estimated_tokens=250)  # System message + user message + response
     def generate_response(self, user_message: str, context: Optional[UserContext] = None) -> str:
         """Generate a response to a user's inbound message."""
         try:
@@ -95,8 +98,8 @@ class MessageGenerator:
             
         if context.get('preferences'):
             prefs = context['preferences']
-            if 'style' in prefs:
-                base_message += f" Use a {prefs['style']} communication style."
+            if 'communication_style' in prefs:
+                base_message += f" Use a {prefs['communication_style']} communication style."
                 
         if context.get('personal_info'):
             info = context['personal_info']

@@ -128,6 +128,20 @@ def test_generate_message_with_empty_context(message_generator):
     assert "160 characters" in prompt
     assert "uplifting message" in prompt
 
+def test_build_system_message_with_communication_style(message_generator):
+    """Test that communication style is properly incorporated into system message."""
+    context = {
+        "preferences": {
+            "communication_style": "casual"
+        }
+    }
+    system_message = message_generator._build_system_message(context)
+    assert "casual" in system_message.lower()
+    
+    context["preferences"]["communication_style"] = "professional"
+    system_message = message_generator._build_system_message(context)
+    assert "professional" in system_message.lower()
+
 def test_build_system_message_with_empty_context(message_generator):
     context = {}
     system_message = message_generator._build_system_message(context)

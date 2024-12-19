@@ -26,6 +26,7 @@ structlog = "^23.1.0"
 Flask-Cors = "^4.0.0"
 marshmallow = "^3.20.1"
 email-validator = "^2.0.0"
+Flask-Limiter = "^3.5.0"  # Keep basic rate limiting
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.4.2"
@@ -80,6 +81,7 @@ module = [
     "flask_migrate.*",
     "twilio.*",
     "gunicorn.*",
-    "pytest.*"
+    "pytest.*",
+    "flask_limiter.*"
 ]
 ignore_missing_imports = true
