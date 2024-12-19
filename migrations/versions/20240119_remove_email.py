@@ -9,7 +9,7 @@ from alembic import op
 import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
-revision = '20240119_remove_email'
+revision = '20240119_remove_email'  # Keep this shorter ID
 down_revision = '20240118_add_user_config'
 branch_labels = None
 depends_on = None

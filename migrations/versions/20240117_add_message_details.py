@@ -1,6 +1,6 @@
 """add message details
 
-Revision ID: add_message_details
+Revision ID: 20240117_add_message_details
 Revises: 1a2b3c4d5e6f
 Create Date: 2024-01-17 10:00:00.000000
 
@@ -9,7 +9,7 @@ from alembic import op
 import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
-revision = 'add_message_details'
+revision = '20240117_add_message_details'
 down_revision = '1a2b3c4d5e6f'
 branch_labels = None
 depends_on = None

@@ -1,7 +1,7 @@
 """add user config
 
-Revision ID: add_user_config
-Revises: add_message_details
+Revision ID: 20240118_add_user_config
+Revises: 20240117_add_message_details
 Create Date: 2024-01-18 10:00:00.000000
 
 """
@@ -10,8 +10,8 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
-revision = 'add_user_config'
-down_revision = 'add_message_details'
+revision = '20240118_add_user_config'
+down_revision = '20240117_add_message_details'
 branch_labels = None
 depends_on = None
 
