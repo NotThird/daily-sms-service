@@ -15,9 +15,21 @@ branch_labels = None
 depends_on = None
 
 def upgrade():
-    # Remove email column from user_configs table
-    op.drop_column('user_configs', 'email')
+    """Remove email column from user_configs table with retry logic."""
+    try:
+        # Try direct column drop first
+        op.drop_column('user_configs', 'email')
+    except Exception as e:
+        # If direct drop fails, try with batch operations
+        with op.batch_alter_table('user_configs') as batch_op:
+            batch_op.drop_column('email')
 
 def downgrade():
-    # Add back email column if needed to rollback
-    op.add_column('user_configs', sa.Column('email', sa.String(255), nullable=True))
+    """Add back email column if needed to rollback."""
+    try:
+        # Try direct column add first
+        op.add_column('user_configs', sa.Column('email', sa.String(255), nullable=True))
+    except Exception as e:
+        # If direct add fails, try with batch operations
+        with op.batch_alter_table('user_configs') as batch_op:
+            batch_op.add_column(sa.Column('email', sa.String(255), nullable=True))

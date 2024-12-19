@@ -1,29 +1,54 @@
 #!/bin/bash
 set -e
 
-# Function to wait for database
+# Function to wait for database with increased timeout
 wait_for_db() {
     echo "Waiting for database..."
-    while ! poetry run python -c "
+    local max_attempts=30  # Increased max attempts
+    local attempt=1
+    local wait_time=2  # Initial wait time in seconds
+    
+    while [ $attempt -le $max_attempts ]; do
+        echo "Database connection attempt $attempt of $max_attempts..."
+        if poetry run python -c "
 import sys
 import psycopg2
 import os
+from time import sleep
 
 try:
-    psycopg2.connect(os.getenv('DATABASE_URL'))
-except psycopg2.OperationalError:
+    # Add connection timeout
+    conn = psycopg2.connect(os.getenv('DATABASE_URL'), connect_timeout=10)
+    conn.close()
+    sys.exit(0)
+except psycopg2.OperationalError as e:
+    print(f'Connection failed: {e}')
     sys.exit(1)
-sys.exit(0)
-"; do
-        sleep 1
+"; then
+            echo "Database is ready!"
+            return 0
+        fi
+        
+        echo "Waiting ${wait_time} seconds before retry..."
+        sleep $wait_time
+        
+        # Exponential backoff up to 10 seconds
+        if [ $wait_time -lt 10 ]; then
+            wait_time=$((wait_time * 2))
+        fi
+        
+        attempt=$((attempt + 1))
     done
-    echo "Database is ready!"
+    
+    echo "Failed to connect to database after $max_attempts attempts"
+    return 1
 }
 
-# Function to run migrations with retries
+# Function to run migrations with improved retry logic
 run_migrations() {
-    local max_attempts=3
+    local max_attempts=5  # Increased max attempts
     local attempt=1
+    local wait_time=5  # Initial wait time in seconds
     
     while [ $attempt -le $max_attempts ]; do
         echo "Running database migrations (attempt $attempt of $max_attempts)..."
@@ -33,8 +58,19 @@ run_migrations() {
         else
             echo "Migration attempt $attempt failed"
             if [ $attempt -lt $max_attempts ]; then
-                echo "Waiting before retry..."
-                sleep 5
+                echo "Waiting ${wait_time} seconds before retry..."
+                sleep $wait_time
+                
+                # Exponential backoff up to 30 seconds
+                if [ $wait_time -lt 30 ]; then
+                    wait_time=$((wait_time * 2))
+                fi
+                
+                # Verify database connection before retrying
+                if ! wait_for_db; then
+                    echo "Lost database connection, attempting to reconnect..."
+                    continue
+                fi
             fi
         fi
         attempt=$((attempt + 1))
