@@ -47,6 +47,30 @@ US_CITY_TIMEZONES = {
     'kansas city': 'America/Chicago',
     'miami': 'America/New_York',
     'atlanta': 'America/New_York',
+    'lubbock': 'America/Chicago',  # Added based on the logs showing user is from Lubbock
+    'amarillo': 'America/Chicago',  # Added since it's another major Texas city
+}
+
+# Group cities by timezone for suggesting nearby cities
+TIMEZONE_CITIES = {
+    'America/Chicago': [
+        'Chicago', 'Houston', 'Dallas', 'San Antonio', 'Austin', 
+        'Fort Worth', 'Nashville', 'Memphis', 'Oklahoma City', 
+        'Kansas City', 'Lubbock', 'Amarillo'
+    ],
+    'America/New_York': [
+        'New York', 'Philadelphia', 'Jacksonville', 'Columbus',
+        'Charlotte', 'Boston', 'Louisville', 'Baltimore', 'Miami',
+        'Atlanta'
+    ],
+    'America/Los_Angeles': [
+        'Los Angeles', 'San Diego', 'San Jose', 'San Francisco',
+        'Seattle', 'Portland', 'Las Vegas', 'Fresno', 'Sacramento'
+    ],
+    'America/Phoenix': ['Phoenix', 'Tucson'],
+    'America/Denver': ['Denver', 'El Paso', 'Albuquerque'],
+    'America/Detroit': ['Detroit'],
+    'America/Indiana/Indianapolis': ['Indianapolis']
 }
 
 class OnboardingService:
@@ -70,6 +94,13 @@ class OnboardingService:
         """Get timezone string for a given city."""
         city_lower = city.lower().strip()
         return US_CITY_TIMEZONES.get(city_lower)
+
+    def _get_nearby_cities(self, timezone: str) -> str:
+        """Get a list of major cities in the same timezone."""
+        cities = TIMEZONE_CITIES.get(timezone, [])
+        if len(cities) <= 3:
+            return ', '.join(cities)
+        return f"{', '.join(cities[:3])} or other major cities in that area"
 
     def start_onboarding(self, recipient_id: int) -> str:
         """
@@ -131,8 +162,15 @@ class OnboardingService:
             elif current_step == 'timezone':
                 timezone_str = self._get_timezone_for_city(message)
                 if not timezone_str:
-                    logger.info(f"Invalid city provided: {message}")
-                    return "Sorry, I don't recognize that city. Please enter a major US city.", False
+                    # Check if we already know their timezone from their current city
+                    current_city = recipient.timezone if recipient.timezone in TIMEZONE_CITIES else None
+                    if current_city:
+                        nearby_cities = self._get_nearby_cities(current_city)
+                        logger.info(f"Invalid city provided: {message}, suggesting cities from known timezone: {current_city}")
+                        return f"I don't recognize that city. Since you're in the {current_city} timezone, please enter a major city like {nearby_cities}.", False
+                    else:
+                        logger.info(f"Invalid city provided: {message}")
+                        return "I don't recognize that city. Please enter a major US city like New York, Chicago, Los Angeles, Houston, or Phoenix.", False
                 
                 try:
                     # Validate the timezone
