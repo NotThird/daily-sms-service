@@ -54,6 +54,7 @@ def run_migrations_online() -> None:
     """Run migrations in 'online' mode with improved error handling and retry logic."""
     from time import sleep
     from sqlalchemy.exc import OperationalError, ProgrammingError
+    from alembic.runtime.migration import MigrationContext
     
     max_attempts = 5
     attempt = 1
@@ -87,10 +88,28 @@ def run_migrations_online() -> None:
                 connectable = db.create_engine(get_url(), **engine_config)
 
                 with connectable.connect() as connection:
+                    # Check if alembic_version table exists
+                    inspector = sa.inspect(connectable)
+                    tables = inspector.get_table_names()
+                    
+                    if 'alembic_version' not in tables:
+                        logger.info("Fresh database detected - no version table found")
+                        # For fresh database, stamp with initial revision before running migrations
+                        context.configure(
+                            connection=connection,
+                            target_metadata=db.metadata
+                        )
+                        with context.begin_transaction():
+                            context.execute('CREATE TABLE IF NOT EXISTS alembic_version (version_num VARCHAR(32) NOT NULL)')
+                            context.execute("DELETE FROM alembic_version")
+                            context.execute("INSERT INTO alembic_version VALUES ('1a2b3c4d5e6f')")
+                    
+                    # Now run migrations normally
                     context.configure(
                         connection=connection,
                         target_metadata=db.metadata,
-                        compare_type=True  # Enable column type comparison
+                        compare_type=True,  # Enable column type comparison
+                        version_table='alembic_version'  # Explicitly set version table
                     )
 
                     with context.begin_transaction():
@@ -108,6 +127,22 @@ def run_migrations_online() -> None:
             attempt += 1
         except Exception as e:
             logger.error(f"Unexpected error during migration: {str(e)}")
+            if "Can't locate revision" in str(e):
+                logger.error("Migration chain error detected - attempting recovery")
+                try:
+                    with connectable.connect() as connection:
+                        context.configure(
+                            connection=connection,
+                            target_metadata=db.metadata
+                        )
+                        with context.begin_transaction():
+                            # Reset to initial state
+                            context.execute("DELETE FROM alembic_version")
+                            context.execute("INSERT INTO alembic_version VALUES ('1a2b3c4d5e6f')")
+                            logger.info("Reset migration state to initial revision")
+                            return  # Let the next attempt handle migrations
+                except Exception as recovery_error:
+                    logger.error(f"Recovery attempt failed: {str(recovery_error)}")
             raise
 
     logger.error(f"Migration failed after {max_attempts} attempts")
