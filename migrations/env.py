@@ -1,8 +1,8 @@
 import logging
 from logging.config import fileConfig
 import os
-from sqlalchemy import engine_from_config
-from sqlalchemy import pool
+from sqlalchemy import engine_from_config, pool, inspect, text
+import sqlalchemy as sa
 from alembic import context
 from flask import current_app, Flask
 from src.models import db
@@ -17,7 +17,10 @@ logging.basicConfig(level=logging.INFO)
 
 def get_url():
     """Get database URL from environment variable."""
-    return os.getenv("DATABASE_URL")
+    url = os.getenv("DATABASE_URL")
+    if url and url.startswith("postgres://"):
+        url = url.replace("postgres://", "postgresql://", 1)
+    return url
 
 def get_app():
     """Get Flask application."""
@@ -85,7 +88,7 @@ def run_migrations_online() -> None:
                         'options': '-c statement_timeout=30000'  # Statement timeout (30s)
                     }
                 }
-                connectable = db.create_engine(get_url(), **engine_config)
+                connectable = sa.create_engine(get_url(), **engine_config)
 
                 with connectable.connect() as connection:
                     # Check if alembic_version table exists
