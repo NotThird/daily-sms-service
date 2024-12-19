@@ -15,21 +15,39 @@ branch_labels = None
 depends_on = None
 
 def upgrade():
-    """Remove email column from user_configs table with retry logic."""
-    try:
-        # Try direct column drop first
-        op.drop_column('user_configs', 'email')
-    except Exception as e:
-        # If direct drop fails, try with batch operations
-        with op.batch_alter_table('user_configs') as batch_op:
-            batch_op.drop_column('email')
+    """Remove email column from user_configs table with existence check."""
+    from sqlalchemy.exc import ProgrammingError
+    from sqlalchemy import inspect
+    
+    # Check if column exists before trying to remove it
+    inspector = inspect(op.get_bind())
+    columns = [col['name'] for col in inspector.get_columns('user_configs')]
+    
+    if 'email' in columns:
+        try:
+            # Try direct column drop first
+            op.drop_column('user_configs', 'email')
+        except ProgrammingError as e:
+            if 'does not exist' not in str(e):
+                # If it's not a "column doesn't exist" error, try batch operations
+                with op.batch_alter_table('user_configs') as batch_op:
+                    batch_op.drop_column('email')
 
 def downgrade():
-    """Add back email column if needed to rollback."""
-    try:
-        # Try direct column add first
-        op.add_column('user_configs', sa.Column('email', sa.String(255), nullable=True))
-    except Exception as e:
-        # If direct add fails, try with batch operations
-        with op.batch_alter_table('user_configs') as batch_op:
-            batch_op.add_column(sa.Column('email', sa.String(255), nullable=True))
+    """Add back email column if it doesn't exist."""
+    from sqlalchemy.exc import ProgrammingError
+    from sqlalchemy import inspect
+    
+    # Check if column already exists
+    inspector = inspect(op.get_bind())
+    columns = [col['name'] for col in inspector.get_columns('user_configs')]
+    
+    if 'email' not in columns:
+        try:
+            # Try direct column add first
+            op.add_column('user_configs', sa.Column('email', sa.String(255), nullable=True))
+        except ProgrammingError as e:
+            if 'already exists' not in str(e):
+                # If it's not a "column exists" error, try batch operations
+                with op.batch_alter_table('user_configs') as batch_op:
+                    batch_op.add_column(sa.Column('email', sa.String(255), nullable=True))

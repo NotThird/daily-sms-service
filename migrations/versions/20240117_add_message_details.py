@@ -15,15 +15,40 @@ branch_labels = None
 depends_on = None
 
 def upgrade():
-    # Add new columns to message_logs table
-    op.add_column('message_logs', sa.Column('delivered_at', sa.DateTime(), nullable=True))
-    op.add_column('message_logs', sa.Column('price', sa.Float(), nullable=True))
-    op.add_column('message_logs', sa.Column('price_unit', sa.String(length=10), nullable=True))
-    op.add_column('message_logs', sa.Column('direction', sa.String(length=20), nullable=True))
+    """Add new columns to message_logs table with column existence check."""
+    from sqlalchemy.exc import ProgrammingError
+    
+    # List of columns to add with their definitions
+    columns = [
+        ('delivered_at', sa.DateTime(), True),
+        ('price', sa.Float(), True),
+        ('price_unit', sa.String(length=10), True),
+        ('direction', sa.String(length=20), True)
+    ]
+    
+    # Add each column if it doesn't exist
+    for col_name, col_type, nullable in columns:
+        try:
+            op.add_column('message_logs', sa.Column(col_name, col_type, nullable=nullable))
+        except ProgrammingError as e:
+            if 'already exists' in str(e):
+                pass  # Column already exists, skip it
+            else:
+                raise  # Re-raise if it's a different error
 
 def downgrade():
-    # Remove the new columns
-    op.drop_column('message_logs', 'delivered_at')
-    op.drop_column('message_logs', 'price')
-    op.drop_column('message_logs', 'price_unit')
-    op.drop_column('message_logs', 'direction')
+    """Remove columns if they exist."""
+    from sqlalchemy.exc import ProgrammingError
+    
+    # List of columns to remove
+    columns = ['delivered_at', 'price', 'price_unit', 'direction']
+    
+    # Remove each column if it exists
+    for col_name in columns:
+        try:
+            op.drop_column('message_logs', col_name)
+        except ProgrammingError as e:
+            if 'does not exist' in str(e):
+                pass  # Column doesn't exist, skip it
+            else:
+                raise  # Re-raise if it's a different error
