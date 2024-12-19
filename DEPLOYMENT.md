@@ -11,7 +11,6 @@ This guide provides instructions for deploying the Daily Positivity SMS Service 
    - Auth Token
    - Phone number
 4. GitHub repository with your code
-5. (Optional) Redis instance for distributed rate limiting
 
 ## Cost-Effective Infrastructure Setup
 
@@ -35,24 +34,7 @@ Note: Free tier limitations
 - Restarts on first connection
 - These limitations are acceptable for a gift service
 
-### 2. Redis Setup (Optional)
-
-For distributed rate limiting, you can use either:
-
-1. Render Redis (Minimal Cost):
-   - Go to "New +" > "Redis"
-   - Name: `daily-positivity-redis`
-   - Instance Type: "Starter" ($7/month)
-   - Region: Same as other services
-
-2. Memory-based Rate Limiting (Free):
-   - Uses in-memory storage (default)
-   - Works for single-instance deployments
-   - No additional setup required
-
-### 3. Combined Web Service Setup
-
-Instead of separate workers, we'll use background tasks within the web service.
+### 2. Web Service Setup
 
 1. Go to "New +" > "Web Service"
 2. Connect your GitHub repository
@@ -87,12 +69,11 @@ Instead of separate workers, we'll use background tasks within the web service.
    MESSAGE_WINDOW_START=12
    MESSAGE_WINDOW_END=17
 
-   # Rate Limiting
-   OPENAI_TOKENS_PER_MIN=10000
-   OPENAI_REQUESTS_PER_MIN=50
-   TWILIO_MESSAGES_PER_DAY=1000
-   TWILIO_MESSAGES_PER_SECOND=1
-   REDIS_URL=redis://... (Optional: Redis URL if using distributed rate limiting)
+   # Rate Limiting (Optional - has sensible defaults)
+   OPENAI_TOKENS_PER_MIN=20000
+   OPENAI_REQUESTS_PER_MIN=100
+   TWILIO_MESSAGES_PER_DAY=2000
+   TWILIO_MESSAGES_PER_SECOND=5
    ```
 
 5. Click "Create Web Service"
@@ -111,8 +92,7 @@ Instead of separate workers, we'll use background tasks within the web service.
 Minimal costs:
 - PostgreSQL (Free Tier): $0/month
 - Web Service (Starter): $7/month
-- Redis (Optional): $7/month
-Total: $7-14/month
+Total: $7/month
 
 Additional costs to consider:
 - OpenAI API usage (pay as you go)
@@ -134,8 +114,7 @@ Free tier considerations:
 ### 3. Rate Limiting Monitoring
 - Monitor rate limit logs in application logs
 - Watch for 429 (Too Many Requests) errors
-- Check Redis memory usage if using distributed rate limiting
-- Adjust rate limits based on usage patterns
+- Adjust limits if needed (via environment variables)
 
 ## Troubleshooting
 
@@ -157,10 +136,9 @@ Free tier considerations:
    - Check database connectivity
 
 4. Rate Limiting Issues
-   - Check rate limit configuration
-   - Monitor rate limit logs
-   - Verify Redis connection if using distributed rate limiting
-   - Adjust limits if needed
+   - Check application logs for rate limit warnings
+   - Verify rate limit environment variables
+   - Increase limits if needed for your user base
 
 ## Maintenance
 
@@ -168,8 +146,7 @@ Free tier considerations:
 
 1. Monitor logs for errors
 2. Check database usage (stay within 1GB limit)
-3. Monitor rate limit metrics
-4. Every 90 days:
+3. Every 90 days:
    ```bash
    # Run database migration script
    python scripts/migrate_render_db.py \
@@ -183,14 +160,12 @@ Free tier considerations:
 
 Before going live:
 1. [ ] Database created (free tier)
-2. [ ] Redis configured (if using distributed rate limiting)
-3. [ ] Web service deployed (starter tier)
-4. [ ] Environment variables set (including rate limits)
-5. [ ] Twilio webhooks configured
-6. [ ] Test message flow end-to-end
-7. [ ] Document production URLs
-8. [ ] Set calendar reminder for 90-day database renewal
-9. [ ] Configure monitoring for rate limits
+2. [ ] Web service deployed (starter tier)
+3. [ ] Environment variables set
+4. [ ] Twilio webhooks configured
+5. [ ] Test message flow end-to-end
+6. [ ] Document production URLs
+7. [ ] Set calendar reminder for 90-day database renewal
 
 ## Cost Optimization Tips
 
@@ -198,6 +173,4 @@ Before going live:
 2. Keep database size small
 3. Clean up old messages regularly
 4. Use efficient queries
-5. Adjust rate limits based on actual usage
-6. Consider in-memory rate limiting if Redis cost is prohibitive
-7. Monitor and optimize Redis memory usage if applicable
+5. Adjust rate limits if needed based on actual usage
