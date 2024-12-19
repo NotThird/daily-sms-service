@@ -20,14 +20,40 @@ sys.exit(0)
     echo "Database is ready!"
 }
 
+# Function to run migrations with retries
+run_migrations() {
+    local max_attempts=3
+    local attempt=1
+    
+    while [ $attempt -le $max_attempts ]; do
+        echo "Running database migrations (attempt $attempt of $max_attempts)..."
+        if poetry run flask db upgrade; then
+            echo "Migrations completed successfully!"
+            return 0
+        else
+            echo "Migration attempt $attempt failed"
+            if [ $attempt -lt $max_attempts ]; then
+                echo "Waiting before retry..."
+                sleep 5
+            fi
+        fi
+        attempt=$((attempt + 1))
+    done
+    
+    echo "All migration attempts failed"
+    return 1
+}
+
 case "$1" in
     web)
         # Wait for database before starting web server
         wait_for_db
         
-        # Run migrations using Flask-Migrate
-        echo "Running database migrations..."
-        poetry run flask db upgrade
+        # Run migrations with retries
+        if ! run_migrations; then
+            echo "Failed to run migrations after multiple attempts"
+            exit 1
+        fi
         
         # Start Gunicorn with the combined web service and scheduler
         echo "Starting web server with integrated scheduler..."
