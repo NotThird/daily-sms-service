@@ -44,19 +44,61 @@ except psycopg2.OperationalError as e:
     return 1
 }
 
-# Function to run migrations with improved retry logic
+# Function to run migrations with improved retry logic and reset capability
 run_migrations() {
     local max_attempts=5  # Increased max attempts
     local attempt=1
     local wait_time=5  # Initial wait time in seconds
+    local reset_attempted=false
     
     while [ $attempt -le $max_attempts ]; do
         echo "Running database migrations (attempt $attempt of $max_attempts)..."
+        
+        # Try running migrations
         if poetry run flask db upgrade; then
             echo "Migrations completed successfully!"
             return 0
         else
             echo "Migration attempt $attempt failed"
+            
+            # If we haven't tried resetting and this isn't our last attempt
+            if [ "$reset_attempted" = false ] && [ $attempt -lt $max_attempts ]; then
+                echo "Attempting to reset migration state..."
+                
+                # Try to reset the alembic version to initial state
+                if poetry run python -c "
+from sqlalchemy import create_engine, text
+import os
+
+engine = create_engine(os.getenv('DATABASE_URL'))
+with engine.connect() as conn:
+    # Check if table exists
+    result = conn.execute(text(\"\"\"
+        SELECT EXISTS (
+            SELECT FROM information_schema.tables 
+            WHERE table_name = 'alembic_version'
+        )
+    \"\"\")).scalar()
+    
+    if result:
+        # Reset to initial revision
+        conn.execute(text('DELETE FROM alembic_version'))
+        conn.execute(text(\"INSERT INTO alembic_version VALUES ('1a2b3c4d5e6f')\"))
+        conn.commit()
+        print('Successfully reset migration state')
+    else:
+        print('No alembic_version table found - fresh database')
+"; then
+                    echo "Migration state reset successfully"
+                    reset_attempted=true
+                    # Reset attempt counter but keep track that we tried resetting
+                    attempt=1
+                    continue
+                else
+                    echo "Failed to reset migration state"
+                fi
+            fi
+            
             if [ $attempt -lt $max_attempts ]; then
                 echo "Waiting ${wait_time} seconds before retry..."
                 sleep $wait_time
