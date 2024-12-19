@@ -15,8 +15,14 @@ branch_labels = None
 depends_on = None
 
 def upgrade():
-    """Add new columns to message_logs table with column existence check."""
-    from sqlalchemy.exc import ProgrammingError
+    """Add new columns to message_logs table with proper transaction handling."""
+    from sqlalchemy.exc import ProgrammingError, InternalError
+    from sqlalchemy import text, inspect
+    
+    # Get current columns
+    connection = op.get_bind()
+    inspector = inspect(connection)
+    existing_columns = {col['name'] for col in inspector.get_columns('message_logs')}
     
     # List of columns to add with their definitions
     columns = [
@@ -28,13 +34,15 @@ def upgrade():
     
     # Add each column if it doesn't exist
     for col_name, col_type, nullable in columns:
-        try:
-            op.add_column('message_logs', sa.Column(col_name, col_type, nullable=nullable))
-        except ProgrammingError as e:
-            if 'already exists' in str(e):
-                pass  # Column already exists, skip it
-            else:
-                raise  # Re-raise if it's a different error
+        if col_name not in existing_columns:
+            try:
+                # Start a new transaction for each column
+                with connection.begin() as trans:
+                    op.add_column('message_logs', sa.Column(col_name, col_type, nullable=nullable))
+                    trans.commit()
+            except (ProgrammingError, InternalError) as e:
+                if 'already exists' not in str(e):
+                    raise  # Re-raise if it's not a "column exists" error
 
 def downgrade():
     """Remove columns if they exist."""

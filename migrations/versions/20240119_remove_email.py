@@ -15,39 +15,75 @@ branch_labels = None
 depends_on = None
 
 def upgrade():
-    """Remove email column from user_configs table with existence check."""
-    from sqlalchemy.exc import ProgrammingError
-    from sqlalchemy import inspect
+    """Remove email column from user_configs table with proper transaction handling."""
+    from sqlalchemy.exc import ProgrammingError, InternalError
+    from sqlalchemy import inspect, text
     
-    # Check if column exists before trying to remove it
-    inspector = inspect(op.get_bind())
+    # Get database connection
+    connection = op.get_bind()
+    
+    # Check if table exists first
+    inspector = inspect(connection)
+    tables = inspector.get_table_names()
+    
+    if 'user_configs' not in tables:
+        return  # Nothing to do if table doesn't exist
+    
+    # Check if column exists
     columns = [col['name'] for col in inspector.get_columns('user_configs')]
     
     if 'email' in columns:
         try:
-            # Try direct column drop first
-            op.drop_column('user_configs', 'email')
-        except ProgrammingError as e:
+            # Start a new transaction
+            with connection.begin() as trans:
+                # Try direct column drop first
+                op.drop_column('user_configs', 'email')
+                trans.commit()
+        except (ProgrammingError, InternalError) as e:
             if 'does not exist' not in str(e):
-                # If it's not a "column doesn't exist" error, try batch operations
-                with op.batch_alter_table('user_configs') as batch_op:
-                    batch_op.drop_column('email')
+                try:
+                    # If direct drop fails, try with batch operations in a new transaction
+                    with connection.begin() as trans:
+                        with op.batch_alter_table('user_configs') as batch_op:
+                            batch_op.drop_column('email')
+                        trans.commit()
+                except (ProgrammingError, InternalError) as e2:
+                    if 'does not exist' not in str(e2):
+                        raise  # Re-raise if it's not a "column doesn't exist" error
 
 def downgrade():
     """Add back email column if it doesn't exist."""
-    from sqlalchemy.exc import ProgrammingError
-    from sqlalchemy import inspect
+    from sqlalchemy.exc import ProgrammingError, InternalError
+    from sqlalchemy import inspect, text
+    
+    # Get database connection
+    connection = op.get_bind()
+    
+    # Check if table exists first
+    inspector = inspect(connection)
+    tables = inspector.get_table_names()
+    
+    if 'user_configs' not in tables:
+        return  # Nothing to do if table doesn't exist
     
     # Check if column already exists
-    inspector = inspect(op.get_bind())
     columns = [col['name'] for col in inspector.get_columns('user_configs')]
     
     if 'email' not in columns:
         try:
-            # Try direct column add first
-            op.add_column('user_configs', sa.Column('email', sa.String(255), nullable=True))
-        except ProgrammingError as e:
+            # Start a new transaction
+            with connection.begin() as trans:
+                # Try direct column add first
+                op.add_column('user_configs', sa.Column('email', sa.String(255), nullable=True))
+                trans.commit()
+        except (ProgrammingError, InternalError) as e:
             if 'already exists' not in str(e):
-                # If it's not a "column exists" error, try batch operations
-                with op.batch_alter_table('user_configs') as batch_op:
-                    batch_op.add_column(sa.Column('email', sa.String(255), nullable=True))
+                try:
+                    # If direct add fails, try with batch operations in a new transaction
+                    with connection.begin() as trans:
+                        with op.batch_alter_table('user_configs') as batch_op:
+                            batch_op.add_column(sa.Column('email', sa.String(255), nullable=True))
+                        trans.commit()
+                except (ProgrammingError, InternalError) as e2:
+                    if 'already exists' not in str(e2):
+                        raise  # Re-raise if it's not a "column exists" error

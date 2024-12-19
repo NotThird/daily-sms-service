@@ -16,29 +16,36 @@ branch_labels = None
 depends_on = None
 
 def upgrade():
-    """Create user_configs table with existence check."""
-    from sqlalchemy.exc import ProgrammingError
-    from sqlalchemy import inspect
+    """Create user_configs table with proper transaction handling."""
+    from sqlalchemy.exc import ProgrammingError, InternalError
+    from sqlalchemy import inspect, text
+    
+    # Get database connection
+    connection = op.get_bind()
     
     # Check if table already exists
-    inspector = inspect(op.get_bind())
+    inspector = inspect(connection)
     tables = inspector.get_table_names()
     
     if 'user_configs' not in tables:
         try:
-            op.create_table('user_configs',
-                sa.Column('id', sa.Integer(), nullable=False),
-                sa.Column('recipient_id', sa.Integer(), nullable=False),
-                sa.Column('name', sa.String(length=100), nullable=True),
-                sa.Column('email', sa.String(length=255), nullable=True),
-                sa.Column('preferences', sa.JSON(), nullable=False, server_default='{}'),
-                sa.Column('personal_info', sa.JSON(), nullable=False, server_default='{}'),
-                sa.Column('created_at', sa.DateTime(), nullable=False, server_default=sa.text('CURRENT_TIMESTAMP')),
-                sa.Column('updated_at', sa.DateTime(), nullable=False, server_default=sa.text('CURRENT_TIMESTAMP')),
-                sa.PrimaryKeyConstraint('id'),
-                sa.ForeignKeyConstraint(['recipient_id'], ['recipients.id'], ondelete='CASCADE')
-            )
-        except ProgrammingError as e:
+            # Start a new transaction
+            with connection.begin() as trans:
+                # Create table
+                op.create_table('user_configs',
+                    sa.Column('id', sa.Integer(), nullable=False),
+                    sa.Column('recipient_id', sa.Integer(), nullable=False),
+                    sa.Column('name', sa.String(length=100), nullable=True),
+                    sa.Column('email', sa.String(length=255), nullable=True),
+                    sa.Column('preferences', sa.JSON(), nullable=False, server_default='{}'),
+                    sa.Column('personal_info', sa.JSON(), nullable=False, server_default='{}'),
+                    sa.Column('created_at', sa.DateTime(), nullable=False, server_default=sa.text('CURRENT_TIMESTAMP')),
+                    sa.Column('updated_at', sa.DateTime(), nullable=False, server_default=sa.text('CURRENT_TIMESTAMP')),
+                    sa.PrimaryKeyConstraint('id'),
+                    sa.ForeignKeyConstraint(['recipient_id'], ['recipients.id'], ondelete='CASCADE')
+                )
+                trans.commit()
+        except (ProgrammingError, InternalError) as e:
             if 'already exists' not in str(e):
                 raise  # Re-raise if it's not a "table exists" error
 
