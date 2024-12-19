@@ -236,6 +236,11 @@ def handle_inbound_message():
             sms_service.handle_opt_in(from_number)
             response_text = "Welcome back! You'll start receiving daily positive messages again."
             
+        elif upper_body == 'RESTART':
+            app.logger.info(f"Processing RESTART command for {from_number}")
+            response_text = onboarding_service.start_onboarding(recipient.id)
+            app.logger.info(f"Restarted onboarding for user {recipient.id}")
+            
         else:
             if is_new_user or not onboarding_service.is_onboarding_complete(recipient.id):
                 app.logger.info(f"Handling onboarding for user {recipient.id}")

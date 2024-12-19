@@ -140,8 +140,8 @@ def test_complete_onboarding_flow(client, db_session, mocker):
     logs = db_session.query(MessageLog).filter_by(recipient_id=recipient.id).all()
     assert len(logs) == 16  # 8 inbound + 8 outbound messages
 
-def test_restart_onboarding(client, db_session, mocker):
-    """Test restarting onboarding for an existing user."""
+def test_restart_onboarding_mid_flow(client, db_session, mocker):
+    """Test restarting onboarding in the middle of the flow."""
     # Mock services
     mocker.patch('src.app.RequestValidator.validate', return_value=True)
     mocker.patch('src.app.sms_service.validate_phone_number', return_value=True)
@@ -151,27 +151,29 @@ def test_restart_onboarding(client, db_session, mocker):
         'message_sid': 'test_sid'
     })
     
-    # Create user with existing config
-    recipient = Recipient(phone_number='+1234567890', timezone='UTC', is_active=True)
-    db_session.add(recipient)
-    db_session.flush()
-    
-    config = UserConfig(
-        recipient_id=recipient.id,
-        name="Old Name",
-        preferences={'some_pref': 'value'},
-        personal_info={'some_info': 'value'}
-    )
-    db_session.add(config)
-    db_session.commit()
-    
-    # Start new onboarding
-    response = client.post('/webhook/inbound', data={
+    # Start onboarding
+    client.post('/webhook/inbound', data={
         'From': '+1234567890',
-        'Body': 'START'
+        'Body': 'Hello'
     })
     
+    # Send name
+    client.post('/webhook/inbound', data={
+        'From': '+1234567890',
+        'Body': 'John Doe'
+    })
+    
+    # Send RESTART command
+    response = client.post('/webhook/inbound', data={
+        'From': '+1234567890',
+        'Body': 'RESTART'
+    })
+    
+    # Verify onboarding was restarted
+    assert "Welcome to our service" in response.get_data(as_text=True)
+    
     # Verify state was reset
+    recipient = db_session.query(Recipient).filter_by(phone_number='+1234567890').first()
     config = db_session.query(UserConfig).filter_by(recipient_id=recipient.id).first()
     assert config.preferences == {'onboarding_step': 'name'}
     assert config.personal_info == {}
