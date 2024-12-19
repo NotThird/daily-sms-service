@@ -86,11 +86,13 @@ class OnboardingService:
                     personal_info={}
                 )
                 self.db_session.add(config)
-                self.db_session.commit()
             else:
-                config.preferences['onboarding_step'] = 'name'
-                self.db_session.commit()
+                # Reset the config for a fresh start
+                config.preferences = {'onboarding_step': 'name'}
+                config.personal_info = {}
+                config.name = None
 
+            self.db_session.commit()
             logger.info(f"Starting onboarding for user {recipient_id}, preferences: {config.preferences}")
             return self.ONBOARDING_STEPS['name']
 
@@ -121,6 +123,7 @@ class OnboardingService:
             # Process the response based on current step
             if current_step == 'name':
                 config.name = message
+                config.personal_info['name'] = message  # Store in both places for consistency
                 config.preferences['onboarding_step'] = 'timezone'
                 next_message = self.ONBOARDING_STEPS['timezone']
                 logger.info(f"User {recipient_id} provided name: {message}, moving to timezone step")
@@ -136,7 +139,7 @@ class OnboardingService:
                     timezone = pytz.timezone(timezone_str)
                     current_time = datetime.now(timezone)
                     
-                    # Store both city and timezone in UserConfig
+                    # Store both city and timezone
                     config.personal_info['city'] = message
                     config.personal_info['timezone'] = timezone_str
                     
@@ -145,7 +148,7 @@ class OnboardingService:
                     
                     config.preferences['onboarding_step'] = 'occupation'
                     next_message = self.ONBOARDING_STEPS['occupation']
-                    logger.info(f"User {recipient_id} provided valid city: {message} (timezone: {timezone_str}), moving to preferences step")
+                    logger.info(f"User {recipient_id} provided valid city: {message} (timezone: {timezone_str}), moving to occupation step")
                 except Exception as e:
                     logger.error(f"Error validating timezone: {str(e)}")
                     return "Sorry, there was an error setting your timezone. Please try another major US city.", False

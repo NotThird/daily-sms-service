@@ -21,6 +21,35 @@ def test_start_onboarding(db_session):
     config = db_session.query(UserConfig).filter_by(recipient_id=recipient.id).first()
     assert config is not None
     assert config.preferences['onboarding_step'] == 'name'
+    assert config.personal_info == {}
+    assert config.name is None
+
+def test_restart_onboarding(db_session):
+    """Test restarting onboarding for an existing user."""
+    # Create a test recipient with existing config
+    recipient = Recipient(phone_number='+1234567890', timezone='UTC', is_active=True)
+    db_session.add(recipient)
+    db_session.flush()
+    
+    config = UserConfig(
+        recipient_id=recipient.id,
+        name="Old Name",
+        preferences={'some_pref': 'value'},
+        personal_info={'some_info': 'value'}
+    )
+    db_session.add(config)
+    db_session.flush()
+    
+    service = OnboardingService(db_session)
+    
+    # Restart onboarding
+    first_message = service.start_onboarding(recipient.id)
+    
+    # Verify state was reset
+    config = db_session.query(UserConfig).filter_by(recipient_id=recipient.id).first()
+    assert config.preferences == {'onboarding_step': 'name'}
+    assert config.personal_info == {}
+    assert config.name is None
 
 def test_process_responses(db_session):
     """Test processing responses through the onboarding flow."""
@@ -37,10 +66,22 @@ def test_process_responses(db_session):
     assert message == service.ONBOARDING_STEPS['timezone']
     assert not complete
     
+    # Verify name is stored in both places
+    config = db_session.query(UserConfig).filter_by(recipient_id=recipient.id).first()
+    assert config.name == "John Doe"
+    assert config.personal_info['name'] == "John Doe"
+    
     # Test timezone step
     message, complete = service.process_response(recipient.id, "New York")
     assert message == service.ONBOARDING_STEPS['occupation']
     assert not complete
+    
+    # Verify city and timezone are stored
+    config = db_session.query(UserConfig).filter_by(recipient_id=recipient.id).first()
+    recipient = db_session.query(Recipient).filter_by(id=recipient.id).first()
+    assert config.personal_info['city'] == "New York"
+    assert config.personal_info['timezone'] == "America/New_York"
+    assert recipient.timezone == "America/New_York"
     
     # Test occupation step
     message, complete = service.process_response(recipient.id, "Software Engineer")
@@ -70,7 +111,9 @@ def test_process_responses(db_session):
     # Verify final state
     config = db_session.query(UserConfig).filter_by(recipient_id=recipient.id).first()
     assert config.name == "John Doe"
+    assert config.personal_info['name'] == "John Doe"
     assert config.personal_info['city'] == "New York"
+    assert config.personal_info['timezone'] == "America/New_York"
     assert config.personal_info['occupation'] == "Software Engineer"
     assert config.personal_info['interests'] == ["coding", "hiking", "reading"]
     assert config.preferences['communication_style'] == 'casual'
@@ -98,6 +141,8 @@ def test_invalid_city(db_session):
     # Config should still be in timezone step
     config = db_session.query(UserConfig).filter_by(recipient_id=recipient.id).first()
     assert config.preferences['onboarding_step'] == 'timezone'
+    assert 'city' not in config.personal_info
+    assert 'timezone' not in config.personal_info
 
 def test_invalid_style(db_session):
     """Test handling invalid communication style selection."""
@@ -216,6 +261,9 @@ def test_is_in_onboarding(db_session):
     # Complete onboarding
     service.process_response(recipient.id, "John Doe")
     service.process_response(recipient.id, "New York")
+    service.process_response(recipient.id, "Software Engineer")
+    service.process_response(recipient.id, "coding, hiking")
+    service.process_response(recipient.id, "C")
     service.process_response(recipient.id, "M")
     service.process_response(recipient.id, "Y")
     

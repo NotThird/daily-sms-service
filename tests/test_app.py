@@ -40,6 +40,8 @@ def test_new_user_starts_onboarding(client, db_session, mocker):
     config = db_session.query(UserConfig).filter_by(recipient_id=recipient.id).first()
     assert config is not None
     assert config.preferences['onboarding_step'] == 'name'
+    assert config.personal_info == {}
+    assert config.name is None
 
 def test_complete_onboarding_flow(client, db_session, mocker):
     """Test completing the entire onboarding flow."""
@@ -64,23 +66,50 @@ def test_complete_onboarding_flow(client, db_session, mocker):
         'From': '+1234567890',
         'Body': 'John Doe'
     })
-    assert "email" in response.get_data(as_text=True).lower()
-    
-    # Send email
-    response = client.post('/webhook/inbound', data={
-        'From': '+1234567890',
-        'Body': 'john@example.com'
-    })
     assert "city" in response.get_data(as_text=True).lower()
+    
+    # Verify name storage
+    recipient = db_session.query(Recipient).filter_by(phone_number='+1234567890').first()
+    config = db_session.query(UserConfig).filter_by(recipient_id=recipient.id).first()
+    assert config.name == "John Doe"
+    assert config.personal_info['name'] == "John Doe"
     
     # Send city
     response = client.post('/webhook/inbound', data={
         'From': '+1234567890',
         'Body': 'New York'
     })
+    assert "occupation" in response.get_data(as_text=True).lower()
+    
+    # Verify city and timezone storage
+    config = db_session.query(UserConfig).filter_by(recipient_id=recipient.id).first()
+    recipient = db_session.query(Recipient).filter_by(id=recipient.id).first()
+    assert config.personal_info['city'] == "New York"
+    assert config.personal_info['timezone'] == "America/New_York"
+    assert recipient.timezone == "America/New_York"
+    
+    # Send occupation
+    response = client.post('/webhook/inbound', data={
+        'From': '+1234567890',
+        'Body': 'Software Engineer'
+    })
+    assert "interests" in response.get_data(as_text=True).lower()
+    
+    # Send interests
+    response = client.post('/webhook/inbound', data={
+        'From': '+1234567890',
+        'Body': 'coding, hiking'
+    })
+    assert "style" in response.get_data(as_text=True).lower()
+    
+    # Send style preference
+    response = client.post('/webhook/inbound', data={
+        'From': '+1234567890',
+        'Body': 'C'
+    })
     assert "morning" in response.get_data(as_text=True).lower()
     
-    # Send preference
+    # Send timing preference
     response = client.post('/webhook/inbound', data={
         'From': '+1234567890',
         'Body': 'M'
@@ -95,15 +124,58 @@ def test_complete_onboarding_flow(client, db_session, mocker):
     assert "Welcome John Doe!" in response.get_data(as_text=True)
     
     # Verify final state
-    recipient = db_session.query(Recipient).filter_by(phone_number='+1234567890').first()
     config = db_session.query(UserConfig).filter_by(recipient_id=recipient.id).first()
     assert config.name == "John Doe"
-    assert config.email == "john@example.com"
+    assert config.personal_info['name'] == "John Doe"
+    assert config.personal_info['city'] == "New York"
+    assert config.personal_info['timezone'] == "America/New_York"
+    assert config.personal_info['occupation'] == "Software Engineer"
+    assert config.personal_info['interests'] == ["coding", "hiking"]
+    assert config.preferences['communication_style'] == 'casual'
+    assert config.preferences['message_time'] == 'morning'
     assert config.preferences['onboarding_complete'] is True
+    assert 'onboarding_step' not in config.preferences
     
     # Verify message logs were created
     logs = db_session.query(MessageLog).filter_by(recipient_id=recipient.id).all()
-    assert len(logs) == 12  # 6 inbound + 6 outbound messages
+    assert len(logs) == 16  # 8 inbound + 8 outbound messages
+
+def test_restart_onboarding(client, db_session, mocker):
+    """Test restarting onboarding for an existing user."""
+    # Mock services
+    mocker.patch('src.app.RequestValidator.validate', return_value=True)
+    mocker.patch('src.app.sms_service.validate_phone_number', return_value=True)
+    mocker.patch('src.app.sms_service.send_message', return_value={
+        'status': 'success',
+        'delivery_status': 'sent',
+        'message_sid': 'test_sid'
+    })
+    
+    # Create user with existing config
+    recipient = Recipient(phone_number='+1234567890', timezone='UTC', is_active=True)
+    db_session.add(recipient)
+    db_session.flush()
+    
+    config = UserConfig(
+        recipient_id=recipient.id,
+        name="Old Name",
+        preferences={'some_pref': 'value'},
+        personal_info={'some_info': 'value'}
+    )
+    db_session.add(config)
+    db_session.commit()
+    
+    # Start new onboarding
+    response = client.post('/webhook/inbound', data={
+        'From': '+1234567890',
+        'Body': 'START'
+    })
+    
+    # Verify state was reset
+    config = db_session.query(UserConfig).filter_by(recipient_id=recipient.id).first()
+    assert config.preferences == {'onboarding_step': 'name'}
+    assert config.personal_info == {}
+    assert config.name is None
 
 def test_opt_out_during_onboarding(client, db_session, mocker):
     """Test that a user can opt out during onboarding."""
@@ -164,16 +236,25 @@ def test_regular_message_after_onboarding(client, db_session, mocker):
     mocker.patch('src.app.message_generator.generate_response', return_value="AI response")
     
     # Create completed user
-    recipient = Recipient(phone_number='+1234567890', timezone='UTC', is_active=True)
+    recipient = Recipient(phone_number='+1234567890', timezone='America/New_York', is_active=True)
     db_session.add(recipient)
     db_session.flush()
     
     config = UserConfig(
         recipient_id=recipient.id,
         name="John Doe",
-        email="john@example.com",
-        preferences={'onboarding_complete': True},
-        personal_info={'city': 'New York'}
+        preferences={
+            'onboarding_complete': True,
+            'communication_style': 'casual',
+            'message_time': 'morning'
+        },
+        personal_info={
+            'name': 'John Doe',
+            'city': 'New York',
+            'timezone': 'America/New_York',
+            'occupation': 'Software Engineer',
+            'interests': ['coding', 'hiking']
+        }
     )
     db_session.add(config)
     db_session.commit()
@@ -186,3 +267,39 @@ def test_regular_message_after_onboarding(client, db_session, mocker):
     
     # Should get AI response
     assert "AI response" in response.get_data(as_text=True)
+
+def test_invalid_city_during_onboarding(client, db_session, mocker):
+    """Test handling invalid city input during onboarding."""
+    # Mock services
+    mocker.patch('src.app.RequestValidator.validate', return_value=True)
+    mocker.patch('src.app.sms_service.validate_phone_number', return_value=True)
+    mocker.patch('src.app.sms_service.send_message', return_value={
+        'status': 'success',
+        'delivery_status': 'sent',
+        'message_sid': 'test_sid'
+    })
+    
+    # Start onboarding and provide name
+    client.post('/webhook/inbound', data={
+        'From': '+1234567890',
+        'Body': 'Hello'
+    })
+    client.post('/webhook/inbound', data={
+        'From': '+1234567890',
+        'Body': 'John Doe'
+    })
+    
+    # Try invalid city
+    response = client.post('/webhook/inbound', data={
+        'From': '+1234567890',
+        'Body': 'Invalid City'
+    })
+    
+    assert "don't recognize that city" in response.get_data(as_text=True).lower()
+    
+    # Verify still in timezone step
+    recipient = db_session.query(Recipient).filter_by(phone_number='+1234567890').first()
+    config = db_session.query(UserConfig).filter_by(recipient_id=recipient.id).first()
+    assert config.preferences['onboarding_step'] == 'timezone'
+    assert 'city' not in config.personal_info
+    assert 'timezone' not in config.personal_info
