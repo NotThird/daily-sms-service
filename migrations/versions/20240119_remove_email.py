@@ -15,75 +15,51 @@ branch_labels = None
 depends_on = None
 
 def upgrade():
-    """Remove email column from user_configs table with proper transaction handling."""
+    """Remove email column from user_configs table."""
     from sqlalchemy.exc import ProgrammingError, InternalError
-    from sqlalchemy import inspect, text
+    from sqlalchemy import inspect
     
     # Get database connection
     connection = op.get_bind()
+    inspector = inspect(connection)
     
     # Check if table exists first
-    inspector = inspect(connection)
-    tables = inspector.get_table_names()
-    
-    if 'user_configs' not in tables:
+    if 'user_configs' not in inspector.get_table_names():
         return  # Nothing to do if table doesn't exist
     
     # Check if column exists
     columns = [col['name'] for col in inspector.get_columns('user_configs')]
-    
     if 'email' in columns:
         try:
-            # Start a new transaction
-            with connection.begin() as trans:
-                # Try direct column drop first
-                op.drop_column('user_configs', 'email')
-                trans.commit()
+            # Try direct column drop first
+            op.drop_column('user_configs', 'email')
         except (ProgrammingError, InternalError) as e:
             if 'does not exist' not in str(e):
-                try:
-                    # If direct drop fails, try with batch operations in a new transaction
-                    with connection.begin() as trans:
-                        with op.batch_alter_table('user_configs') as batch_op:
-                            batch_op.drop_column('email')
-                        trans.commit()
-                except (ProgrammingError, InternalError) as e2:
-                    if 'does not exist' not in str(e2):
-                        raise  # Re-raise if it's not a "column doesn't exist" error
+                # If direct drop fails, try with batch operations
+                with op.batch_alter_table('user_configs') as batch_op:
+                    batch_op.drop_column('email')
 
 def downgrade():
     """Add back email column if it doesn't exist."""
     from sqlalchemy.exc import ProgrammingError, InternalError
-    from sqlalchemy import inspect, text
+    from sqlalchemy import inspect
     
     # Get database connection
     connection = op.get_bind()
+    inspector = inspect(connection)
     
     # Check if table exists first
-    inspector = inspect(connection)
-    tables = inspector.get_table_names()
-    
-    if 'user_configs' not in tables:
+    if 'user_configs' not in inspector.get_table_names():
         return  # Nothing to do if table doesn't exist
     
     # Check if column already exists
     columns = [col['name'] for col in inspector.get_columns('user_configs')]
-    
     if 'email' not in columns:
         try:
-            # Start a new transaction
-            with connection.begin() as trans:
-                # Try direct column add first
-                op.add_column('user_configs', sa.Column('email', sa.String(255), nullable=True))
-                trans.commit()
+            # Try direct column add first
+            op.add_column('user_configs', sa.Column('email', sa.String(255), nullable=True))
         except (ProgrammingError, InternalError) as e:
             if 'already exists' not in str(e):
-                try:
-                    # If direct add fails, try with batch operations in a new transaction
-                    with connection.begin() as trans:
-                        with op.batch_alter_table('user_configs') as batch_op:
-                            batch_op.add_column(sa.Column('email', sa.String(255), nullable=True))
-                        trans.commit()
-                except (ProgrammingError, InternalError) as e2:
-                    if 'already exists' not in str(e2):
-                        raise  # Re-raise if it's not a "column exists" error
+                # If direct add fails, try with batch operations
+                with op.batch_alter_table('user_configs') as batch_op:
+                    batch_op.add_column(sa.Column('email', sa.String(255), nullable=True))

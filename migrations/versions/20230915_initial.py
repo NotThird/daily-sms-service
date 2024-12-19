@@ -15,74 +15,66 @@ branch_labels = None
 depends_on = None
 
 def upgrade() -> None:
-    """Create initial tables with proper transaction handling."""
+    """Create initial tables."""
     from sqlalchemy.exc import ProgrammingError, InternalError
-    from sqlalchemy import inspect, text
+    from sqlalchemy import inspect
     
     # Get database connection
     connection = op.get_bind()
     inspector = inspect(connection)
-    
-    # Get existing tables
     existing_tables = inspector.get_table_names()
     
     try:
-        # Start a transaction for creating tables
-        with connection.begin() as trans:
-            # Create recipients table if it doesn't exist
-            if 'recipients' not in existing_tables:
-                op.create_table(
-                    'recipients',
-                    sa.Column('id', sa.Integer(), nullable=False),
-                    sa.Column('phone_number', sa.String(length=20), nullable=False),
-                    sa.Column('timezone', sa.String(length=50), nullable=False),
-                    sa.Column('is_active', sa.Boolean(), nullable=False, default=True),
-                    sa.Column('created_at', sa.DateTime(), nullable=False, server_default=sa.text('now()')),
-                    sa.Column('updated_at', sa.DateTime(), nullable=False, server_default=sa.text('now()')),
-                    sa.PrimaryKeyConstraint('id'),
-                    sa.UniqueConstraint('phone_number')
-                )
-            
-            # Create message_logs table if it doesn't exist
-            if 'message_logs' not in existing_tables:
-                op.create_table(
-                    'message_logs',
-                    sa.Column('id', sa.Integer(), nullable=False),
-                    sa.Column('recipient_id', sa.Integer(), nullable=False),
-                    sa.Column('message_type', sa.String(length=20), nullable=False),
-                    sa.Column('content', sa.Text(), nullable=False),
-                    sa.Column('status', sa.String(length=20), nullable=False),
-                    sa.Column('sent_at', sa.DateTime(), nullable=False, server_default=sa.text('now()')),
-                    sa.Column('error_message', sa.Text(), nullable=True),
-                    sa.Column('twilio_sid', sa.String(length=50), nullable=True),
-                    sa.ForeignKeyConstraint(['recipient_id'], ['recipients.id'], ),
-                    sa.PrimaryKeyConstraint('id')
-                )
-            
-            # Create scheduled_messages table if it doesn't exist
-            if 'scheduled_messages' not in existing_tables:
-                op.create_table(
-                    'scheduled_messages',
-                    sa.Column('id', sa.Integer(), nullable=False),
-                    sa.Column('recipient_id', sa.Integer(), nullable=False),
-                    sa.Column('scheduled_time', sa.DateTime(), nullable=False),
-                    sa.Column('status', sa.String(length=20), nullable=False),
-                    sa.Column('created_at', sa.DateTime(), nullable=False, server_default=sa.text('now()')),
-                    sa.Column('sent_at', sa.DateTime(), nullable=True),
-                    sa.Column('error_message', sa.Text(), nullable=True),
-                    sa.ForeignKeyConstraint(['recipient_id'], ['recipients.id'], ),
-                    sa.PrimaryKeyConstraint('id')
-                )
-            
-            trans.commit()
-            
-        # Create indexes in separate transactions
+        # Create recipients table if it doesn't exist
+        if 'recipients' not in existing_tables:
+            op.create_table(
+                'recipients',
+                sa.Column('id', sa.Integer(), nullable=False),
+                sa.Column('phone_number', sa.String(length=20), nullable=False),
+                sa.Column('timezone', sa.String(length=50), nullable=False),
+                sa.Column('is_active', sa.Boolean(), nullable=False, default=True),
+                sa.Column('created_at', sa.DateTime(), nullable=False, server_default=sa.text('now()')),
+                sa.Column('updated_at', sa.DateTime(), nullable=False, server_default=sa.text('now()')),
+                sa.PrimaryKeyConstraint('id'),
+                sa.UniqueConstraint('phone_number')
+            )
+        
+        # Create message_logs table if it doesn't exist
+        if 'message_logs' not in existing_tables:
+            op.create_table(
+                'message_logs',
+                sa.Column('id', sa.Integer(), nullable=False),
+                sa.Column('recipient_id', sa.Integer(), nullable=False),
+                sa.Column('message_type', sa.String(length=20), nullable=False),
+                sa.Column('content', sa.Text(), nullable=False),
+                sa.Column('status', sa.String(length=20), nullable=False),
+                sa.Column('sent_at', sa.DateTime(), nullable=False, server_default=sa.text('now()')),
+                sa.Column('error_message', sa.Text(), nullable=True),
+                sa.Column('twilio_sid', sa.String(length=50), nullable=True),
+                sa.ForeignKeyConstraint(['recipient_id'], ['recipients.id'], ),
+                sa.PrimaryKeyConstraint('id')
+            )
+        
+        # Create scheduled_messages table if it doesn't exist
+        if 'scheduled_messages' not in existing_tables:
+            op.create_table(
+                'scheduled_messages',
+                sa.Column('id', sa.Integer(), nullable=False),
+                sa.Column('recipient_id', sa.Integer(), nullable=False),
+                sa.Column('scheduled_time', sa.DateTime(), nullable=False),
+                sa.Column('status', sa.String(length=20), nullable=False),
+                sa.Column('created_at', sa.DateTime(), nullable=False, server_default=sa.text('now()')),
+                sa.Column('sent_at', sa.DateTime(), nullable=True),
+                sa.Column('error_message', sa.Text(), nullable=True),
+                sa.ForeignKeyConstraint(['recipient_id'], ['recipients.id'], ),
+                sa.PrimaryKeyConstraint('id')
+            )
+        
+        # Create indexes if they don't exist
         def create_index_safely(index_name, table_name, columns):
             try:
-                with connection.begin() as trans:
-                    if not any(idx['name'] == index_name for idx in inspector.get_indexes(table_name)):
-                        op.create_index(index_name, table_name, columns)
-                        trans.commit()
+                if not any(idx['name'] == index_name for idx in inspector.get_indexes(table_name)):
+                    op.create_index(index_name, table_name, columns)
             except (ProgrammingError, InternalError) as e:
                 if 'already exists' not in str(e):
                     raise
@@ -96,7 +88,7 @@ def upgrade() -> None:
             raise
 
 def downgrade() -> None:
-    """Drop tables in reverse order with proper transaction handling."""
+    """Drop tables in reverse order."""
     from sqlalchemy.exc import ProgrammingError, InternalError
     from sqlalchemy import inspect
     
@@ -108,9 +100,7 @@ def downgrade() -> None:
     def drop_table_safely(table_name):
         if table_name in existing_tables:
             try:
-                with connection.begin() as trans:
-                    op.drop_table(table_name)
-                    trans.commit()
+                op.drop_table(table_name)
             except (ProgrammingError, InternalError) as e:
                 if 'does not exist' not in str(e):
                     raise
