@@ -4,9 +4,22 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 from typing import Optional, Dict
 import logging
 import time
+import ssl
+import certifi
+import urllib3
 from .rate_limiter import rate_limit_sms
 
 logger = logging.getLogger(__name__)
+
+# Configure urllib3 to use system certificates
+urllib3.util.ssl_.DEFAULT_CERTS = certifi.where()
+
+def create_ssl_context():
+    """Create a secure SSL context with system certificates."""
+    context = ssl.create_default_context(cafile=certifi.where())
+    context.verify_mode = ssl.CERT_REQUIRED
+    context.check_hostname = True
+    return context
 
 class SMSService:
     """Handles SMS operations using Twilio."""
@@ -19,7 +32,18 @@ class SMSService:
         if not all([account_sid, auth_token, from_number]):
             raise ValueError("Missing required credentials")
             
+        # Set up SSL context
+        ssl_context = create_ssl_context()
+        
+        # Configure urllib3 to use our SSL context
+        urllib3.util.ssl_.DEFAULT_CERTS = certifi.where()
+        urllib3.util.ssl_.SSL_CONTEXT_FACTORY = lambda: ssl_context
+
+        # Initialize Twilio client
         self.client = Client(account_sid, auth_token)
+        
+        # Configure the client's HTTP client to use our SSL context
+        self.client.http_client.verify = certifi.where()
         self.from_number = from_number
         
         # Validate credentials on initialization
