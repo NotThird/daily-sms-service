@@ -18,11 +18,16 @@ def mock_sms_service():
     return Mock()
 
 @pytest.fixture
-def scheduler(mock_db_session, mock_message_generator, mock_sms_service):
+def mock_user_config_service():
+    return Mock()
+
+@pytest.fixture
+def scheduler(mock_db_session, mock_message_generator, mock_sms_service, mock_user_config_service):
     return MessageScheduler(
         mock_db_session,
         mock_message_generator,
-        mock_sms_service
+        mock_sms_service,
+        mock_user_config_service
     )
 
 def test_schedule_daily_messages_success(scheduler, mock_db_session):
@@ -126,9 +131,14 @@ def test_process_scheduled_messages_send_failure(scheduler, mock_db_session, moc
     assert 'Failed to send' in message.error_message
     mock_db_session.commit.assert_called_once()
 
-def test_generate_send_time(scheduler):
+def test_generate_send_time_no_preference(scheduler, mock_user_config_service):
     timezone_str = 'UTC'
-    send_time = scheduler._generate_send_time(timezone_str)
+    recipient_id = 1
+    
+    # Mock no user config
+    mock_user_config_service.get_config.return_value = None
+    
+    send_time = scheduler._generate_send_time(timezone_str, recipient_id)
     
     assert isinstance(send_time, datetime)
     assert send_time.tzinfo == pytz.UTC
@@ -137,6 +147,51 @@ def test_generate_send_time(scheduler):
     local_time = send_time.astimezone(pytz.timezone(timezone_str))
     assert 12 <= local_time.hour <= 16  # 12 PM to 4 PM (allowing for minutes)
     assert 0 <= local_time.minute <= 59
+    
+    mock_user_config_service.get_config.assert_called_once_with(recipient_id)
+
+def test_generate_send_time_with_preference(scheduler, mock_user_config_service):
+    timezone_str = 'UTC'
+    recipient_id = 1
+    preferred_time = "14:30"  # 2:30 PM
+    
+    # Mock user config with preferred time
+    mock_config = Mock()
+    mock_config.preferences = {'preferred_time': preferred_time}
+    mock_user_config_service.get_config.return_value = mock_config
+    
+    send_time = scheduler._generate_send_time(timezone_str, recipient_id)
+    
+    assert isinstance(send_time, datetime)
+    assert send_time.tzinfo == pytz.UTC
+    
+    # Convert to local time and check exact time
+    local_time = send_time.astimezone(pytz.timezone(timezone_str))
+    assert local_time.hour == 14
+    assert local_time.minute == 30
+    
+    mock_user_config_service.get_config.assert_called_once_with(recipient_id)
+
+def test_generate_send_time_invalid_preference(scheduler, mock_user_config_service):
+    timezone_str = 'UTC'
+    recipient_id = 1
+    
+    # Mock user config with invalid preferred time
+    mock_config = Mock()
+    mock_config.preferences = {'preferred_time': 'invalid'}
+    mock_user_config_service.get_config.return_value = mock_config
+    
+    send_time = scheduler._generate_send_time(timezone_str, recipient_id)
+    
+    assert isinstance(send_time, datetime)
+    assert send_time.tzinfo == pytz.UTC
+    
+    # Should fall back to random time between 12-4 PM
+    local_time = send_time.astimezone(pytz.timezone(timezone_str))
+    assert 12 <= local_time.hour <= 16
+    assert 0 <= local_time.minute <= 59
+    
+    mock_user_config_service.get_config.assert_called_once_with(recipient_id)
 
 def test_get_recent_messages(scheduler, mock_db_session):
     # Mock recent message logs
@@ -171,21 +226,26 @@ def test_cleanup_old_records_failure(scheduler, mock_db_session):
     
     mock_db_session.rollback.assert_called_once()
 
-def test_timezone_handling(scheduler):
+def test_timezone_handling(scheduler, mock_user_config_service):
     # Test various timezone strings
     timezones = ['UTC', 'America/New_York', 'Europe/London', 'Asia/Tokyo']
+    recipient_id = 1
+    
+    # Mock no user config
+    mock_user_config_service.get_config.return_value = None
     
     for tz_str in timezones:
-        send_time = scheduler._generate_send_time(tz_str)
+        send_time = scheduler._generate_send_time(tz_str, recipient_id)
         local_time = send_time.astimezone(pytz.timezone(tz_str))
         
         assert 12 <= local_time.hour <= 16
         assert isinstance(send_time, datetime)
         assert send_time.tzinfo == pytz.UTC
 
-def test_invalid_timezone_handling(scheduler):
+def test_invalid_timezone_handling(scheduler, mock_user_config_service):
+    recipient_id = 1
     with pytest.raises(Exception):
-        scheduler._generate_send_time('Invalid/Timezone')
+        scheduler._generate_send_time('Invalid/Timezone', recipient_id)
 
 def test_database_transaction_rollback(scheduler, mock_db_session):
     # Mock database error during scheduling

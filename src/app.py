@@ -97,7 +97,7 @@ except ValueError as e:
     sms_service = None
 
 # Initialize message scheduler
-message_scheduler = MessageScheduler(db.session, message_generator, sms_service)
+message_scheduler = MessageScheduler(db.session, message_generator, sms_service, user_config_service)
 
 # Error handlers
 @app.errorhandler(429)

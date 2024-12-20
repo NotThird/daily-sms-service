@@ -14,8 +14,8 @@ class OnboardingService:
     # Define onboarding steps and their questions
     ONBOARDING_STEPS = {
         'name': "Hi! 👋 I'm your personal positivity messenger. What should I call you?",
-        'occupation': "Nice to meet you! What do you do? (It can be anything - work, study, retired, etc.)",
-        'interests': "What do you enjoy doing? Tell me about your hobbies or things you like.",
+        'occupation': "Nice to meet you! What's your profession or work situation? (Examples: software engineer, student, retired, stay-at-home parent)",
+        'interests': "What are your hobbies and interests outside of work? (Examples: reading, hiking, cooking, gaming)",
         'style': "Quick question: Do you prefer casual messages (like from a friend) or professional ones?\nJust reply with 1 for casual or 2 for professional.",
         'timing': "Last thing: When would you like to receive your daily messages?\nReply with 1 for morning or 2 for evening.",
         'confirmation': "Perfect! I'm ready to start sending you personalized daily messages. Reply OK to begin!"

@@ -5,9 +5,10 @@ import logging
 from typing import Optional, List, Dict
 from sqlalchemy.orm import Session
 
-from .models import Recipient, ScheduledMessage, MessageLog
+from .models import Recipient, ScheduledMessage, MessageLog, UserConfig
 from .message_generator import MessageGenerator
 from .sms_service import SMSService
+from .user_config_service import UserConfigService
 
 logger = logging.getLogger(__name__)
 
@@ -18,12 +19,14 @@ class MessageScheduler:
         self,
         db_session: Session,
         message_generator: MessageGenerator,
-        sms_service: SMSService
+        sms_service: SMSService,
+        user_config_service: UserConfigService
     ):
         """Initialize scheduler with required services."""
         self.db = db_session
         self.message_generator = message_generator
         self.sms_service = sms_service
+        self.user_config_service = user_config_service
 
     def schedule_daily_messages(self) -> Dict[str, int]:
         """
@@ -39,8 +42,8 @@ class MessageScheduler:
             
             for recipient in recipients:
                 try:
-                    # Generate random time between 12 PM and 5 PM in recipient's timezone
-                    scheduled_time = self._generate_send_time(recipient.timezone)
+                    # Generate time based on preferences or random time
+                    scheduled_time = self._generate_send_time(recipient.timezone, recipient.id)
                     
                     # Create scheduled message
                     scheduled_msg = ScheduledMessage(
@@ -145,22 +148,50 @@ class MessageScheduler:
             logger.error(f"Error in process_scheduled_messages: {str(e)}")
             raise
 
-    def _generate_send_time(self, timezone_str: str) -> datetime:
-        """Generate random send time between 12 PM and 5 PM in specified timezone."""
-        # Get current date in recipient's timezone
+    def _generate_send_time(self, timezone_str: str, recipient_id: int) -> datetime:
+        """Generate send time based on user preferences or random time between 12 PM and 5 PM."""
+        # Get current time in recipient's timezone
         tz = pytz.timezone(timezone_str)
-        today = datetime.now(tz).date()
+        current_time = datetime.now(tz)
         
-        # Generate random time between 12 PM and 5 PM
+        # Check for preferred time in user config
+        config = self.user_config_service.get_config(recipient_id)
+        if config and config.preferences.get('preferred_time'):
+            try:
+                # Expected format "HH:MM" in 24-hour time
+                preferred_time = config.preferences['preferred_time']
+                hour, minute = map(int, preferred_time.split(':'))
+                
+                # Create naive datetime for today with preferred time
+                naive_time = datetime.combine(
+                    current_time.date(),
+                    datetime.min.time().replace(hour=hour, minute=minute)
+                )
+                
+                # Convert naive time to timezone-aware time
+                local_time = tz.localize(naive_time)
+                
+                # If preferred time has passed for today, schedule for tomorrow
+                if local_time <= current_time:
+                    local_time = local_time + timedelta(days=1)
+                
+                # Convert to UTC
+                return local_time.astimezone(pytz.UTC)
+            except (ValueError, KeyError):
+                logger.warning(f"Invalid preferred_time format for recipient {recipient_id}, falling back to random time")
+        
+        # Fall back to random time if no valid preferred time
         hour = random.randint(12, 16)  # 12 PM to 4 PM (to allow for minutes)
         minute = random.randint(0, 59)
         
-        # Create datetime in recipient's timezone
-        local_time = tz.localize(
-            datetime.combine(today, datetime.min.time().replace(hour=hour, minute=minute))
+        # Create naive datetime and convert to timezone-aware time
+        naive_time = datetime.combine(
+            current_time.date(),
+            datetime.min.time().replace(hour=hour, minute=minute)
         )
+        local_time = tz.localize(naive_time)
         
-        # Convert to UTC for storage
+        # Convert to UTC
         return local_time.astimezone(pytz.UTC)
 
     def _get_recent_messages(self, recipient_id: int, days: int = 7) -> List[str]:
