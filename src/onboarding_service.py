@@ -8,78 +8,12 @@ from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
-# Common US cities and their timezones
-US_CITY_TIMEZONES = {
-    'new york': 'America/New_York',
-    'los angeles': 'America/Los_Angeles',
-    'chicago': 'America/Chicago',
-    'houston': 'America/Chicago',
-    'phoenix': 'America/Phoenix',
-    'philadelphia': 'America/New_York',
-    'san antonio': 'America/Chicago',
-    'san diego': 'America/Los_Angeles',
-    'dallas': 'America/Chicago',
-    'san jose': 'America/Los_Angeles',
-    'austin': 'America/Chicago',
-    'jacksonville': 'America/New_York',
-    'fort worth': 'America/Chicago',
-    'columbus': 'America/New_York',
-    'san francisco': 'America/Los_Angeles',
-    'charlotte': 'America/New_York',
-    'indianapolis': 'America/Indiana/Indianapolis',
-    'seattle': 'America/Los_Angeles',
-    'denver': 'America/Denver',
-    'boston': 'America/New_York',
-    'el paso': 'America/Denver',
-    'detroit': 'America/Detroit',
-    'nashville': 'America/Chicago',
-    'portland': 'America/Los_Angeles',
-    'memphis': 'America/Chicago',
-    'oklahoma city': 'America/Chicago',
-    'las vegas': 'America/Los_Angeles',
-    'louisville': 'America/New_York',
-    'baltimore': 'America/New_York',
-    'milwaukee': 'America/Chicago',
-    'albuquerque': 'America/Denver',
-    'tucson': 'America/Phoenix',
-    'fresno': 'America/Los_Angeles',
-    'sacramento': 'America/Los_Angeles',
-    'kansas city': 'America/Chicago',
-    'miami': 'America/New_York',
-    'atlanta': 'America/New_York',
-    'lubbock': 'America/Chicago',  # Added based on the logs showing user is from Lubbock
-    'amarillo': 'America/Chicago',  # Added since it's another major Texas city
-}
-
-# Group cities by timezone for suggesting nearby cities
-TIMEZONE_CITIES = {
-    'America/Chicago': [
-        'Chicago', 'Houston', 'Dallas', 'San Antonio', 'Austin', 
-        'Fort Worth', 'Nashville', 'Memphis', 'Oklahoma City', 
-        'Kansas City', 'Lubbock', 'Amarillo'
-    ],
-    'America/New_York': [
-        'New York', 'Philadelphia', 'Jacksonville', 'Columbus',
-        'Charlotte', 'Boston', 'Louisville', 'Baltimore', 'Miami',
-        'Atlanta'
-    ],
-    'America/Los_Angeles': [
-        'Los Angeles', 'San Diego', 'San Jose', 'San Francisco',
-        'Seattle', 'Portland', 'Las Vegas', 'Fresno', 'Sacramento'
-    ],
-    'America/Phoenix': ['Phoenix', 'Tucson'],
-    'America/Denver': ['Denver', 'El Paso', 'Albuquerque'],
-    'America/Detroit': ['Detroit'],
-    'America/Indiana/Indianapolis': ['Indianapolis']
-}
-
 class OnboardingService:
     """Manages the user onboarding flow via SMS."""
     
     # Define onboarding steps and their questions
     ONBOARDING_STEPS = {
         'name': "Hi! Welcome to our service. What's your name?",
-        'timezone': "What city are you in? We'll use this to set your timezone.",
         'occupation': "What's your occupation or profession? This helps us personalize messages.",
         'interests': "What are your main interests or hobbies? (separate multiple with commas)",
         'style': "What communication style do you prefer? Reply with:\nC for Casual\nP for Professional",
@@ -89,18 +23,6 @@ class OnboardingService:
 
     def __init__(self, db_session: Session):
         self.db_session = db_session
-
-    def _get_timezone_for_city(self, city: str) -> Optional[str]:
-        """Get timezone string for a given city."""
-        city_lower = city.lower().strip()
-        return US_CITY_TIMEZONES.get(city_lower)
-
-    def _get_nearby_cities(self, timezone: str) -> str:
-        """Get a list of major cities in the same timezone."""
-        cities = TIMEZONE_CITIES.get(timezone, [])
-        if len(cities) <= 3:
-            return ', '.join(cities)
-        return f"{', '.join(cities[:3])} or other major cities in that area"
 
     def start_onboarding(self, recipient_id: int) -> str:
         """
@@ -123,6 +45,10 @@ class OnboardingService:
                 config.personal_info = {}
                 config.name = None
 
+            # Set timezone to Central time
+            recipient = self.db_session.query(Recipient).filter_by(id=recipient_id).first()
+            recipient.timezone = 'America/Chicago'
+            
             self.db_session.commit()
             logger.info(f"Starting onboarding for user {recipient_id}, preferences: {config.preferences}")
             return self.ONBOARDING_STEPS['name']
@@ -155,41 +81,9 @@ class OnboardingService:
             if current_step == 'name':
                 config.name = message
                 config.personal_info['name'] = message  # Store in both places for consistency
-                config.preferences['onboarding_step'] = 'timezone'
-                next_message = self.ONBOARDING_STEPS['timezone']
-                logger.info(f"User {recipient_id} provided name: {message}, moving to timezone step")
-                
-            elif current_step == 'timezone':
-                timezone_str = self._get_timezone_for_city(message)
-                if not timezone_str:
-                    # Check if we already know their timezone from their current city
-                    current_city = recipient.timezone if recipient.timezone in TIMEZONE_CITIES else None
-                    if current_city:
-                        nearby_cities = self._get_nearby_cities(current_city)
-                        logger.info(f"Invalid city provided: {message}, suggesting cities from known timezone: {current_city}")
-                        return f"I don't recognize that city. Since you're in the {current_city} timezone, please enter a major city like {nearby_cities}.", False
-                    else:
-                        logger.info(f"Invalid city provided: {message}")
-                        return "I don't recognize that city. Please enter a major US city like New York, Chicago, Los Angeles, Houston, or Phoenix.", False
-                
-                try:
-                    # Validate the timezone
-                    timezone = pytz.timezone(timezone_str)
-                    current_time = datetime.now(timezone)
-                    
-                    # Store both city and timezone
-                    config.personal_info['city'] = message
-                    config.personal_info['timezone'] = timezone_str
-                    
-                    # Update Recipient's timezone
-                    recipient.timezone = timezone_str
-                    
-                    config.preferences['onboarding_step'] = 'occupation'
-                    next_message = self.ONBOARDING_STEPS['occupation']
-                    logger.info(f"User {recipient_id} provided valid city: {message} (timezone: {timezone_str}), moving to occupation step")
-                except Exception as e:
-                    logger.error(f"Error validating timezone: {str(e)}")
-                    return "Sorry, there was an error setting your timezone. Please try another major US city.", False
+                config.preferences['onboarding_step'] = 'occupation'
+                next_message = self.ONBOARDING_STEPS['occupation']
+                logger.info(f"User {recipient_id} provided name: {message}, moving to occupation step")
                 
             elif current_step == 'occupation':
                 config.personal_info['occupation'] = message
