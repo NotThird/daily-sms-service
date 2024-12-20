@@ -126,8 +126,22 @@ def process_scheduled_messages():
     """Process scheduled messages that are due."""
     with app.app_context():
         try:
+            current_time = datetime.now(pytz.UTC)
+            app.logger.info(f"Starting message processing at {current_time}")
+            
+            # Check for pending messages
+            pending_count = ScheduledMessage.query.filter_by(status='pending').count()
+            app.logger.info(f"Found {pending_count} pending messages")
+            
             result = message_scheduler.process_scheduled_messages()
             app.logger.info(f"Message processing complete: {result}")
+            
+            # Log any messages that weren't sent
+            if result['failed'] > 0:
+                failed_messages = ScheduledMessage.query.filter_by(status='failed').all()
+                for msg in failed_messages:
+                    app.logger.error(f"Failed message {msg.id} for recipient {msg.recipient_id}: {msg.error_message}")
+                    
         except Exception as e:
             app.logger.error(f"Error in message processing: {str(e)}")
 
@@ -368,17 +382,53 @@ def health_check():
             'error': str(e)
         }), 500
 
+def ensure_scheduler_running():
+    """Ensure the scheduler is running and restart if needed."""
+    if not scheduler.running:
+        app.logger.warning("Scheduler not running, attempting to start...")
+        try:
+            scheduler.start()
+            if scheduler.running:
+                app.logger.info("Successfully restarted scheduler")
+                jobs = scheduler.get_jobs()
+                for job in jobs:
+                    app.logger.info(f"Active job: {job.id} - Next run: {job.next_run_time}")
+            else:
+                app.logger.error("Failed to restart scheduler")
+        except Exception as e:
+            app.logger.error(f"Error starting scheduler: {str(e)}")
+
 def init_app():
     """Initialize the Flask application."""
     with app.app_context():
-        # Initialize database
-        db.create_all()
-        
-        # Start scheduler
-        scheduler.init_app(app)
-        scheduler.start()
-        
-        app.logger.info("Application initialized successfully")
+        try:
+            # Initialize database
+            db.create_all()
+            
+            # Initialize and start scheduler
+            scheduler.init_app(app)
+            scheduler.start()
+            
+            # Verify scheduler is running
+            if scheduler.running:
+                app.logger.info("Scheduler started successfully")
+                jobs = scheduler.get_jobs()
+                for job in jobs:
+                    app.logger.info(f"Scheduled job: {job.id} - Next run: {job.next_run_time}")
+            else:
+                app.logger.error("Failed to start scheduler")
+                
+            # Add periodic scheduler check
+            @scheduler.task('interval', id='check_scheduler', minutes=15)
+            def check_scheduler():
+                """Periodically verify scheduler is running."""
+                ensure_scheduler_running()
+            
+            app.logger.info("Application initialized successfully")
+            
+        except Exception as e:
+            app.logger.error(f"Error during application initialization: {str(e)}")
+            raise
 
 if __name__ == '__main__':
     init_app()

@@ -34,8 +34,12 @@ class MessageScheduler:
         Returns count of scheduled and failed attempts.
         """
         try:
+            current_time = datetime.now(pytz.UTC)
+            logger.info(f"Starting daily message scheduling at {current_time}")
+            
             # Get all active recipients
             recipients = self.db.query(Recipient).filter_by(is_active=True).all()
+            logger.info(f"Found {len(recipients)} active recipients")
             
             scheduled_count = 0
             failed_count = 0
@@ -60,13 +64,31 @@ class MessageScheduler:
                         continue
                     
                     # Generate time based on preferences or random time
-                    scheduled_time = self._generate_send_time(recipient.timezone, recipient.id)
+                    try:
+                        scheduled_time = self._generate_send_time(recipient.timezone, recipient.id)
+                        logger.info(f"Generated send time {scheduled_time} UTC for recipient {recipient.id} (timezone: {recipient.timezone})")
+                        
+                        # Verify the time is valid and in the future
+                        if scheduled_time <= current_time:
+                            logger.warning(f"Generated time {scheduled_time} is in the past for recipient {recipient.id}, adjusting to next day")
+                            scheduled_time = scheduled_time + timedelta(days=1)
+                    except pytz.exceptions.UnknownTimeZoneError:
+                        logger.error(f"Invalid timezone {recipient.timezone} for recipient {recipient.id}, using UTC")
+                        recipient.timezone = 'UTC'
+                        self.db.add(recipient)
+                        scheduled_time = self._generate_send_time('UTC', recipient.id)
                     
                     # Generate message content now
-                    recent_messages = self._get_recent_messages(recipient.id)
-                    message = self.message_generator.generate_message({
-                        'previous_messages': recent_messages
-                    })
+                    try:
+                        recent_messages = self._get_recent_messages(recipient.id)
+                        message = self.message_generator.generate_message({
+                            'previous_messages': recent_messages
+                        })
+                        logger.info(f"Generated message for recipient {recipient.id}")
+                    except Exception as e:
+                        logger.error(f"Failed to generate message for recipient {recipient.id}: {str(e)}")
+                        failed_count += 1
+                        continue
                     
                     # Create scheduled message with content
                     scheduled_msg = ScheduledMessage(
