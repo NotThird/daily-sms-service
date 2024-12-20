@@ -34,7 +34,7 @@ class SplitMessageService:
         
         # Add indices to help with reconstruction
         part1 = " ___ ".join(part1_words)
-        part2 = " ___ ".join(part2_words)
+        part2 = "___ " + " ___ ".join(part2_words) + " ___"  # Add markers at start and end
         
         return part1, part2
 

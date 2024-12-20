@@ -1,0 +1,30 @@
+from setuptools import setup, find_packages
+
+setup(
+    name="daily-positivity",
+    version="0.1.0",
+    packages=find_packages(),
+    install_requires=[
+        "Flask",
+        "SQLAlchemy",
+        "psycopg2-binary",
+        "python-dotenv",
+        "openai",
+        "twilio",
+        "pytz",
+        "alembic",
+        "gunicorn",
+        "requests",
+        "urllib3",
+        "python-json-logger",
+        "tenacity",
+        "Flask-APScheduler",
+        "Flask-SQLAlchemy",
+        "Flask-Migrate",
+        "structlog",
+        "Flask-Cors",
+        "marshmallow",
+        "email-validator",
+        "Flask-Limiter",
+    ],
+)

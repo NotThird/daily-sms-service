@@ -1,47 +1,61 @@
 import pytest
 import os
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from src.models import Base
+from src.app import app, db
 from src.message_generator import MessageGenerator
 from src.sms_service import SMSService
 
-@pytest.fixture(scope="session")
+def pytest_configure(config):
+    """Configure test environment."""
+    os.environ['TESTING'] = 'true'
+    os.environ['DATABASE_URL'] = 'sqlite:///:memory:'
+    os.environ['OPENAI_API_KEY'] = 'test_api_key'
+    os.environ['TWILIO_ACCOUNT_SID'] = 'test_sid'
+    os.environ['TWILIO_AUTH_TOKEN'] = 'test_token'
+    os.environ['TWILIO_FROM_NUMBER'] = '+1234567890'
+
+    # Configure Flask app for testing
+    app.config.update({
+        'TESTING': True,
+        'SQLALCHEMY_DATABASE_URI': 'sqlite:///:memory:',
+        'SQLALCHEMY_TRACK_MODIFICATIONS': False
+    })
+    
+    # Ensure database is using SQLite configuration
+    db.init_app(app)
+
+@pytest.fixture(scope="session", autouse=True)
 def test_database():
     """Create a test database and tables."""
-    # Use SQLite for testing
-    database_url = "sqlite:///test.db"
-    engine = create_engine(database_url)
-    
-    # Create all tables
-    Base.metadata.create_all(engine)
-    
-    yield database_url
-    
-    # Clean up after tests
-    Base.metadata.drop_all(engine)
-    if os.path.exists("test.db"):
-        os.remove("test.db")
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import scoped_session, sessionmaker
 
-@pytest.fixture(scope="session")
-def db_engine(test_database):
-    """Create a test database engine."""
-    return create_engine(test_database)
+    # Create test engine
+    engine = create_engine('sqlite:///:memory:')
+    db.session = scoped_session(sessionmaker(bind=engine))
+    db.engine = engine
+
+    with app.app_context():
+        db.create_all()
+        yield db.session
+        db.session.remove()
+        db.drop_all()
 
 @pytest.fixture(scope="function")
-def db_session(db_engine):
+def db_session(test_database):
     """Create a new database session for a test."""
-    connection = db_engine.connect()
-    transaction = connection.begin()
-    Session = sessionmaker(bind=connection)
-    session = Session()
-    
-    yield session
-    
-    # Rollback the transaction and close connections
-    session.close()
-    transaction.rollback()
-    connection.close()
+    with app.app_context():
+        connection = db.engine.connect()
+        transaction = connection.begin()
+        
+        # Get session
+        session = db.session
+        
+        yield session
+        
+        # Rollback the transaction and close connections
+        session.close()
+        transaction.rollback()
+        connection.close()
 
 @pytest.fixture(scope="session")
 def message_generator():
@@ -156,15 +170,6 @@ def test_scheduled_message(db_session, test_recipient):
     
     return scheduled_msg
 
-def pytest_configure(config):
-    """Configure test environment."""
-    os.environ['TESTING'] = 'true'
-    os.environ['DATABASE_URL'] = 'sqlite:///test.db'
-    os.environ['OPENAI_API_KEY'] = 'test_api_key'
-    os.environ['TWILIO_ACCOUNT_SID'] = 'test_sid'
-    os.environ['TWILIO_AUTH_TOKEN'] = 'test_token'
-    os.environ['TWILIO_FROM_NUMBER'] = '+1234567890'
-
 def pytest_unconfigure(config):
     """Clean up test environment."""
     # Remove test environment variables
@@ -178,3 +183,8 @@ def pytest_unconfigure(config):
     ]
     for var in test_vars:
         os.environ.pop(var, None)
+    
+    # Clean up database
+    with app.app_context():
+        db.session.remove()
+        db.drop_all()

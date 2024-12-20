@@ -45,9 +45,35 @@ def test_build_system_message_with_user_context(message_generator):
 @patch('openai.OpenAI')
 def test_generate_message_with_context(mock_openai, message_generator):
     mock_client = Mock()
-    mock_response = Mock()
-    mock_response.choices = [Mock(message=Mock(content="Test message"))]
-    mock_client.chat.completions.create.return_value = mock_response
+    mock_chat = Mock()
+    mock_completions = Mock()
+    mock_response = Mock(
+        id="chatcmpl-123456",
+        object="chat.completion",
+        created=1728933352,
+        model="gpt-4-0125-preview",
+        choices=[
+            Mock(
+                index=0,
+                message=Mock(
+                    role="assistant",
+                    content="Test message",
+                    refusal=None
+                ),
+                logprobs=None,
+                finish_reason="stop"
+            )
+        ],
+        usage=Mock(
+            prompt_tokens=19,
+            completion_tokens=10,
+            total_tokens=29
+        ),
+        system_fingerprint="fp_6b68a8204b"
+    )
+    mock_completions.create = Mock(return_value=mock_response)
+    mock_chat.completions = mock_completions
+    mock_client.chat = mock_chat
     message_generator.client = mock_client
 
     context = {
@@ -68,9 +94,35 @@ def test_generate_message_with_context(mock_openai, message_generator):
 @patch('openai.OpenAI')
 def test_generate_response_with_context(mock_openai, message_generator):
     mock_client = Mock()
-    mock_response = Mock()
-    mock_response.choices = [Mock(message=Mock(content="Test response"))]
-    mock_client.chat.completions.create.return_value = mock_response
+    mock_chat = Mock()
+    mock_completions = Mock()
+    mock_response = Mock(
+        id="chatcmpl-123456",
+        object="chat.completion",
+        created=1728933352,
+        model="gpt-4-0125-preview",
+        choices=[
+            Mock(
+                index=0,
+                message=Mock(
+                    role="assistant",
+                    content="Test response",
+                    refusal=None
+                ),
+                logprobs=None,
+                finish_reason="stop"
+            )
+        ],
+        usage=Mock(
+            prompt_tokens=19,
+            completion_tokens=10,
+            total_tokens=29
+        ),
+        system_fingerprint="fp_6b68a8204b"
+    )
+    mock_completions.create = Mock(return_value=mock_response)
+    mock_chat.completions = mock_completions
+    mock_client.chat = mock_chat
     message_generator.client = mock_client
 
     context = {

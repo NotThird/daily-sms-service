@@ -3,6 +3,9 @@ name = "daily-positivity"
 version = "0.1.0"
 description = "Daily AI-generated positive SMS messages using GPT-4 and Twilio"
 authors = ["Your Name <your.email@example.com>"]
+packages = [
+    { include = "src" }
+]
 
 [tool.poetry.dependencies]
 python = "^3.9"
@@ -10,7 +13,7 @@ Flask = "^2.3.3"
 SQLAlchemy = "^2.0.20"
 psycopg2-binary = "^2.9.7"
 python-dotenv = "^1.0.0"
-openai = "^0.28.0"
+openai = "^1.0.0"
 twilio = "^8.5.0"
 certifi = "^2024.12.14"
 pytz = "^2023.3"
