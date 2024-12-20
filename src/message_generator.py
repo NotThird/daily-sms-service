@@ -121,13 +121,15 @@ class MessageGenerator:
             info = context['personal_info']
             if 'occupation' in info:
                 base_prompt += f" Consider their occupation as {info['occupation']}."
-            if 'hobbies' in info:
-                base_prompt += f" They enjoy: {', '.join(info['hobbies'])}."
+            if 'interests' in info:
+                base_prompt += f" They enjoy: {', '.join(info['interests'])}."
 
         if context.get('preferences'):
             prefs = context['preferences']
-            if 'topics' in prefs:
-                base_prompt += f" Focus on these topics when possible: {', '.join(prefs['topics'])}."
+            if 'communication_style' in prefs:
+                base_prompt += f" Use a {prefs['communication_style']} tone."
+            if 'message_time' in prefs:
+                base_prompt += f" This message is for {prefs['message_time']} delivery."
         
         if context.get('previous_messages'):
             base_prompt += " Make it different from these recent messages: "

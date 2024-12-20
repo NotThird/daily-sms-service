@@ -7,10 +7,20 @@ from logging.config import dictConfig
 from datetime import datetime
 import pytz
 import os
+import ssl
+import certifi
+import urllib3
 from .rate_limiter import limiter
 
-# Configure SSL for Twilio
-os.environ['TWILIO_SSL_VALIDATION'] = 'ignore'
+# Configure SSL for requests
+urllib3.util.ssl_.DEFAULT_CERTS = certifi.where()
+
+def create_ssl_context():
+    """Create a secure SSL context with system certificates."""
+    context = ssl.create_default_context(cafile=certifi.where())
+    context.verify_mode = ssl.CERT_REQUIRED
+    context.check_hostname = True
+    return context
 
 # Configure logging
 dictConfig({
@@ -65,6 +75,10 @@ from .scheduler import MessageScheduler
 message_generator = MessageGenerator(os.getenv('OPENAI_API_KEY'))
 user_config_service = UserConfigService(db.session)
 onboarding_service = OnboardingService(db.session)
+
+# Set up SSL context for Twilio requests
+ssl_context = create_ssl_context()
+urllib3.util.ssl_.SSL_CONTEXT_FACTORY = lambda: ssl_context
 
 try:
     sms_service = SMSService(
