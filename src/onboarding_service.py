@@ -84,12 +84,15 @@ class OnboardingService:
                 config.preferences['onboarding_step'] = 'occupation'
                 next_message = self.ONBOARDING_STEPS['occupation']
                 logger.info(f"User {recipient_id} provided name: {message}, moving to occupation step")
+                self.db_session.commit()  # Ensure the changes are committed
                 
             elif current_step == 'occupation':
+                # Just save whatever occupation they provide and move on
                 config.personal_info['occupation'] = message
                 config.preferences['onboarding_step'] = 'interests'
                 next_message = self.ONBOARDING_STEPS['interests']
                 logger.info(f"User {recipient_id} provided occupation: {message}, moving to interests step")
+                self.db_session.commit()  # Ensure the changes are committed
 
             elif current_step == 'interests':
                 interests = [interest.strip() for interest in message.split(',')]
@@ -97,6 +100,7 @@ class OnboardingService:
                 config.preferences['onboarding_step'] = 'style'
                 next_message = self.ONBOARDING_STEPS['style']
                 logger.info(f"User {recipient_id} provided interests: {interests}, moving to style step")
+                self.db_session.commit()  # Ensure the changes are committed
 
             elif current_step == 'style':
                 if message.upper() not in ['C', 'P']:
@@ -106,6 +110,7 @@ class OnboardingService:
                 config.preferences['onboarding_step'] = 'timing'
                 next_message = self.ONBOARDING_STEPS['timing']
                 logger.info(f"User {recipient_id} provided style preference: {message}, moving to timing step")
+                self.db_session.commit()  # Ensure the changes are committed
 
             elif current_step == 'timing':
                 if message.upper() not in ['M', 'E']:
@@ -115,6 +120,7 @@ class OnboardingService:
                 config.preferences['onboarding_step'] = 'confirmation'
                 next_message = self.ONBOARDING_STEPS['confirmation']
                 logger.info(f"User {recipient_id} provided timing preference: {message}, moving to confirmation step")
+                self.db_session.commit()  # Ensure the changes are committed
                 
             elif current_step == 'confirmation':
                 if message.upper() != 'Y':
@@ -128,9 +134,8 @@ class OnboardingService:
                 self.db_session.commit()
                 return next_message, True
 
-            # Log the state before committing
+            # Log the state
             logger.info(f"Updating user {recipient_id} config - preferences: {config.preferences}, personal_info: {config.personal_info}")
-            self.db_session.commit()
             return next_message, False
 
         except Exception as e:
