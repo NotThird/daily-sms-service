@@ -1,4 +1,4 @@
-import openai
+from openai import OpenAI
 import random
 from tenacity import retry, stop_after_attempt, wait_exponential, RetryError
 from typing import Optional, Dict, List, TypedDict
@@ -15,7 +15,7 @@ class MessageGenerator:
     
     def __init__(self, api_key: str):
         """Initialize with OpenAI API key."""
-        openai.api_key = api_key
+        self.client = OpenAI(api_key=api_key)
         self.fallback_messages = [
             "Believe in yourself! Every day is a new opportunity to shine.",
             "You are stronger than you know and braver than you believe.",
@@ -43,8 +43,8 @@ class MessageGenerator:
         prompt = self._build_prompt(context)
         system_message = self._build_system_message(context)
         
-        response = openai.ChatCompletion.create(
-            model="gpt-4o-mini",
+        completion = self.client.chat.completions.create(
+            model="gpt-4",
             messages=[
                 {"role": "system", "content": system_message},
                 {"role": "user", "content": prompt}
@@ -54,7 +54,7 @@ class MessageGenerator:
             top_p=0.9
         )
         
-        message = response.choices[0].message.content.strip()
+        message = completion.choices[0].message.content.strip()
         if not message:  # If message is empty after stripping
             raise ValueError("Empty message received from API")
             
@@ -66,8 +66,8 @@ class MessageGenerator:
         """Generate a response to a user's inbound message."""
         try:
             system_message = self._build_system_message(context)
-            response = openai.ChatCompletion.create(
-                model="gpt-4o-mini",
+            completion = self.client.chat.completions.create(
+                model="gpt-4",
                 messages=[
                     {"role": "system", "content": system_message},
                     {"role": "user", "content": f"Respond briefly and positively to this message: {user_message}"}
@@ -76,7 +76,7 @@ class MessageGenerator:
                 temperature=0.7
             )
             
-            message = response.choices[0].message.content.strip()
+            message = completion.choices[0].message.content.strip()
             if not message:  # If message is empty after stripping
                 raise ValueError("Empty message received from API")
                 

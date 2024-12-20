@@ -39,21 +39,46 @@ class MessageScheduler:
             
             scheduled_count = 0
             failed_count = 0
+            skipped_count = 0
             
             for recipient in recipients:
                 try:
+                    # Check if recipient already has a pending message for today
+                    today_start = datetime.now(pytz.UTC).replace(hour=0, minute=0, second=0, microsecond=0)
+                    tomorrow_start = today_start + timedelta(days=1)
+                    
+                    existing_message = self.db.query(ScheduledMessage).filter(
+                        ScheduledMessage.recipient_id == recipient.id,
+                        ScheduledMessage.status == 'pending',
+                        ScheduledMessage.scheduled_time >= today_start,
+                        ScheduledMessage.scheduled_time < tomorrow_start
+                    ).first()
+                    
+                    if existing_message:
+                        logger.info(f"Skipping recipient {recipient.id} - already has pending message for today")
+                        skipped_count += 1
+                        continue
+                    
                     # Generate time based on preferences or random time
                     scheduled_time = self._generate_send_time(recipient.timezone, recipient.id)
                     
-                    # Create scheduled message
+                    # Generate message content now
+                    recent_messages = self._get_recent_messages(recipient.id)
+                    message = self.message_generator.generate_message({
+                        'previous_messages': recent_messages
+                    })
+                    
+                    # Create scheduled message with content
                     scheduled_msg = ScheduledMessage(
                         recipient_id=recipient.id,
                         scheduled_time=scheduled_time,
-                        status='pending'
+                        status='pending',
+                        content=message
                     )
                     
                     self.db.add(scheduled_msg)
                     scheduled_count += 1
+                    logger.info(f"Scheduled message for recipient {recipient.id} at {scheduled_time}")
                     
                 except Exception as e:
                     logger.error(f"Failed to schedule message for recipient {recipient.id}: {str(e)}")
@@ -64,6 +89,7 @@ class MessageScheduler:
             return {
                 'scheduled': scheduled_count,
                 'failed': failed_count,
+                'skipped': skipped_count,
                 'total': len(recipients)
             }
             
@@ -81,7 +107,8 @@ class MessageScheduler:
             current_time = datetime.utcnow()
             due_messages = self.db.query(ScheduledMessage).filter(
                 ScheduledMessage.status == 'pending',
-                ScheduledMessage.scheduled_time <= current_time
+                ScheduledMessage.scheduled_time <= current_time,
+                ScheduledMessage.content != None  # Only process messages with content
             ).all()
             
             sent_count = 0
@@ -96,17 +123,10 @@ class MessageScheduler:
                         scheduled_msg.status = 'cancelled'
                         continue
                     
-                    # Get recent messages to avoid repetition
-                    recent_messages = self._get_recent_messages(recipient.id)
-                    
-                    # Generate and send message
-                    message = self.message_generator.generate_message({
-                        'previous_messages': recent_messages
-                    })
-                    
+                    # Send the pre-generated message
                     result = self.sms_service.send_message(
                         recipient.phone_number,
-                        message
+                        scheduled_msg.content
                     )
                     
                     if result['status'] == 'success':
@@ -114,7 +134,7 @@ class MessageScheduler:
                         message_log = MessageLog(
                             recipient_id=recipient.id,
                             message_type='outbound',
-                            content=message,
+                            content=scheduled_msg.content,
                             status='sent',
                             twilio_sid=result['message_sid']
                         )
@@ -123,12 +143,14 @@ class MessageScheduler:
                         scheduled_msg.status = 'sent'
                         scheduled_msg.sent_at = current_time
                         sent_count += 1
+                        logger.info(f"Successfully sent message {scheduled_msg.id} to recipient {recipient.id}")
                         
                     else:
                         # Log failed send
                         scheduled_msg.status = 'failed'
-                        scheduled_msg.error_message = result['error']
+                        scheduled_msg.error_message = result.get('error')
                         failed_count += 1
+                        logger.error(f"Failed to send message {scheduled_msg.id}: {result.get('error')}")
                     
                 except Exception as e:
                     logger.error(f"Error processing scheduled message {scheduled_msg.id}: {str(e)}")
