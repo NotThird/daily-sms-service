@@ -28,15 +28,12 @@ RUN apt-get update \
 RUN curl -sSL https://install.python-poetry.org | python3 -
 ENV PATH="${POETRY_HOME}/bin:${PATH}"
 
-# Copy just the dependency files first
-COPY pyproject.toml poetry.lock ./
+# Copy the entire project first
+COPY . .
 
 # Install dependencies with caching
 RUN --mount=type=cache,target=/root/.cache/pypoetry \
     poetry install --only main --no-interaction --no-ansi
-
-# Copy the rest of the application
-COPY . .
 
 # Create non-root user
 RUN useradd -m -u 1000 app \
