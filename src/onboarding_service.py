@@ -78,65 +78,49 @@ class OnboardingService:
                 return self.start_onboarding(recipient_id), False
 
             # Process the response based on current step
+            next_step = None
+            
             if current_step == 'name':
                 config.name = message
-                config.personal_info['name'] = message  # Store in both places for consistency
-                config.preferences['onboarding_step'] = 'occupation'
-                next_message = self.ONBOARDING_STEPS['occupation']
-                logger.info(f"User {recipient_id} provided name: {message}, moving to occupation step")
-                self.db_session.commit()  # Ensure the changes are committed
+                config.personal_info['name'] = message
+                next_step = 'occupation'
                 
             elif current_step == 'occupation':
-                # Just save whatever occupation they provide and move on
                 config.personal_info['occupation'] = message
-                config.preferences['onboarding_step'] = 'interests'
-                next_message = self.ONBOARDING_STEPS['interests']
-                logger.info(f"User {recipient_id} provided occupation: {message}, moving to interests step")
-                self.db_session.commit()  # Ensure the changes are committed
-
+                next_step = 'interests'
+                
             elif current_step == 'interests':
-                interests = [interest.strip() for interest in message.split(',')]
-                config.personal_info['interests'] = interests
-                config.preferences['onboarding_step'] = 'style'
-                next_message = self.ONBOARDING_STEPS['style']
-                logger.info(f"User {recipient_id} provided interests: {interests}, moving to style step")
-                self.db_session.commit()  # Ensure the changes are committed
-
+                config.personal_info['interests'] = [interest.strip() for interest in message.split(',')]
+                next_step = 'style'
+                
             elif current_step == 'style':
                 if message.upper() not in ['C', 'P']:
-                    logger.info(f"User {recipient_id} provided invalid style: {message}")
                     return "Please reply with C for Casual or P for Professional.", False
                 config.preferences['communication_style'] = 'casual' if message.upper() == 'C' else 'professional'
-                config.preferences['onboarding_step'] = 'timing'
-                next_message = self.ONBOARDING_STEPS['timing']
-                logger.info(f"User {recipient_id} provided style preference: {message}, moving to timing step")
-                self.db_session.commit()  # Ensure the changes are committed
-
+                next_step = 'timing'
+                
             elif current_step == 'timing':
                 if message.upper() not in ['M', 'E']:
-                    logger.info(f"User {recipient_id} provided invalid timing: {message}")
                     return "Please reply with M for morning or E for evening.", False
                 config.preferences['message_time'] = 'morning' if message.upper() == 'M' else 'evening'
-                config.preferences['onboarding_step'] = 'confirmation'
-                next_message = self.ONBOARDING_STEPS['confirmation']
-                logger.info(f"User {recipient_id} provided timing preference: {message}, moving to confirmation step")
-                self.db_session.commit()  # Ensure the changes are committed
+                next_step = 'confirmation'
                 
             elif current_step == 'confirmation':
                 if message.upper() != 'Y':
-                    logger.info(f"User {recipient_id} provided invalid confirmation: {message}")
                     return "Please reply Y to confirm your registration.", False
-                # Complete onboarding
                 config.preferences['onboarding_complete'] = True
                 config.preferences.pop('onboarding_step', None)
-                next_message = f"Welcome {config.name}! You're all set to receive daily messages. Text STOP at any time to unsubscribe."
-                logger.info(f"User {recipient_id} completed onboarding, final preferences: {config.preferences}")
                 self.db_session.commit()
-                return next_message, True
+                return f"Welcome {config.name}! You're all set to receive daily messages. Text STOP at any time to unsubscribe.", True
 
-            # Log the state
-            logger.info(f"Updating user {recipient_id} config - preferences: {config.preferences}, personal_info: {config.personal_info}")
-            return next_message, False
+            # Update step and commit
+            if next_step:
+                config.preferences['onboarding_step'] = next_step
+                self.db_session.commit()
+                return self.ONBOARDING_STEPS[next_step], False
+
+            # Should never reach here since all steps have a next_step or return earlier
+            raise ValueError(f"Invalid onboarding step: {current_step}")
 
         except Exception as e:
             logger.error(f"Error processing onboarding response: {str(e)}")

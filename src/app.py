@@ -269,21 +269,24 @@ def handle_inbound_message():
                 user_context = user_config_service.get_gpt_prompt_context(recipient.id)
                 response_text = message_generator.generate_response(body, user_context)
             
+        # Commit the inbound message log first
+        db.session.commit()
+        
         app.logger.info(f"Sending response: {response_text}")
         send_result = sms_service.send_message(from_number, response_text)
         
+        # Create and commit outbound message log
         response_log = MessageLog(
             recipient_id=recipient.id,
             message_type='outbound',
             content=response_text,
-            status=send_result['delivery_status'],
+            status=send_result.get('delivery_status', 'queued'),
             twilio_sid=send_result.get('message_sid'),
             error_message=send_result.get('error_message'),
             price=send_result.get('price'),
             price_unit=send_result.get('price_unit')
         )
         db.session.add(response_log)
-        
         db.session.commit()
         return jsonify({'status': 'success'})
         
