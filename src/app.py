@@ -74,7 +74,7 @@ from .scheduler import MessageScheduler
 # Initialize services
 message_generator = MessageGenerator(os.getenv('OPENAI_API_KEY'))
 user_config_service = UserConfigService(db.session)
-onboarding_service = OnboardingService(db.session)
+onboarding_service = OnboardingService(db.session, message_generator)
 
 # Set up SSL context for Twilio requests
 ssl_context = create_ssl_context()

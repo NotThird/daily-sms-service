@@ -13,16 +13,17 @@ class OnboardingService:
     
     # Define onboarding steps and their questions
     ONBOARDING_STEPS = {
-        'name': "Hi! Welcome to our service. What's your name?",
-        'occupation': "What's your occupation or profession? This helps us personalize messages.",
-        'interests': "What are your main interests or hobbies? (separate multiple with commas)",
-        'style': "What communication style do you prefer? Reply with:\nC for Casual\nP for Professional",
-        'timing': "Would you like to receive messages in the morning (M) or evening (E)?",
-        'confirmation': "Great! You're all set up. Reply Y to confirm and start receiving messages."
+        'name': "Hi! 👋 I'm your personal positivity messenger. What should I call you?",
+        'occupation': "Nice to meet you! What do you do? (It can be anything - work, study, retired, etc.)",
+        'interests': "What do you enjoy doing? Tell me about your hobbies or things you like.",
+        'style': "Quick question: Do you prefer casual messages (like from a friend) or professional ones?\nJust reply with 1 for casual or 2 for professional.",
+        'timing': "Last thing: When would you like to receive your daily messages?\nReply with 1 for morning or 2 for evening.",
+        'confirmation': "Perfect! I'm ready to start sending you personalized daily messages. Reply OK to begin!"
     }
 
-    def __init__(self, db_session: Session):
+    def __init__(self, db_session: Session, message_generator=None):
         self.db_session = db_session
+        self.message_generator = message_generator
 
     def start_onboarding(self, recipient_id: int) -> str:
         """
@@ -79,55 +80,115 @@ class OnboardingService:
 
             # Process the response based on current step
             if current_step == 'name':
+                # Save any existing preferences
+                existing_prefs = {k: v for k, v in config.preferences.items() if k != 'onboarding_step'}
+                
+                # Store name and move to next step
                 config.name = message
                 config.personal_info['name'] = message
-                config.preferences = {'onboarding_step': 'occupation'}  # Reset preferences to just the step
+                config.preferences = {
+                    'onboarding_step': 'occupation',
+                    **existing_prefs
+                }
                 self.db_session.commit()
                 return self.ONBOARDING_STEPS['occupation'], False
                 
             elif current_step == 'occupation':
+                # Save any existing preferences
+                existing_prefs = {k: v for k, v in config.preferences.items() if k != 'onboarding_step'}
+                
+                # Store occupation and move to next step
                 config.personal_info['occupation'] = message
-                config.preferences = {'onboarding_step': 'interests'}
+                config.preferences = {
+                    'onboarding_step': 'interests',
+                    **existing_prefs
+                }
                 self.db_session.commit()
                 return self.ONBOARDING_STEPS['interests'], False
                 
             elif current_step == 'interests':
-                config.personal_info['interests'] = [interest.strip() for interest in message.split(',')]
-                config.preferences = {'onboarding_step': 'style'}
+                # Save any existing preferences
+                existing_prefs = {k: v for k, v in config.preferences.items() if k != 'onboarding_step'}
+                
+                # Handle different formats of interests input
+                if ',' in message:
+                    interests = [interest.strip() for interest in message.split(',')]
+                else:
+                    interests = [interest.strip() for interest in message.split()]
+                
+                # Store interests and move to next step
+                config.personal_info['interests'] = interests
+                config.preferences = {
+                    'onboarding_step': 'style',
+                    **existing_prefs
+                }
                 self.db_session.commit()
                 return self.ONBOARDING_STEPS['style'], False
                 
             elif current_step == 'style':
-                if message.upper() not in ['C', 'P']:
-                    return "Please reply with C for Casual or P for Professional.", False
+                # Save any existing preferences
+                existing_prefs = {k: v for k, v in config.preferences.items() if k != 'onboarding_step'}
+                
+                # Super simple style check - just look for "2", everything else is casual
+                style_value = 'professional' if '2' in message else 'casual'
+                
+                # Update preferences
                 config.preferences = {
                     'onboarding_step': 'timing',
-                    'communication_style': 'casual' if message.upper() == 'C' else 'professional'
+                    'communication_style': style_value,
+                    **existing_prefs
                 }
                 self.db_session.commit()
                 return self.ONBOARDING_STEPS['timing'], False
                 
             elif current_step == 'timing':
-                if message.upper() not in ['M', 'E']:
-                    return "Please reply with M for morning or E for evening.", False
+                # Save any existing preferences
+                existing_prefs = {k: v for k, v in config.preferences.items() if k != 'onboarding_step'}
+                
+                # Super simple timing check - just look for "2", everything else is morning
+                time_value = 'evening' if '2' in message else 'morning'
+                
+                # Update preferences
                 config.preferences = {
                     'onboarding_step': 'confirmation',
-                    'communication_style': config.preferences.get('communication_style'),
-                    'message_time': 'morning' if message.upper() == 'M' else 'evening'
+                    'message_time': time_value,
+                    **existing_prefs
                 }
                 self.db_session.commit()
                 return self.ONBOARDING_STEPS['confirmation'], False
                 
             elif current_step == 'confirmation':
-                if message.upper() != 'Y':
-                    return "Please reply Y to confirm your registration.", False
-                config.preferences = {
-                    'onboarding_complete': True,
-                    'communication_style': config.preferences.get('communication_style'),
-                    'message_time': config.preferences.get('message_time')
-                }
-                self.db_session.commit()
-                return f"Welcome {config.name}! You're all set to receive daily messages. Text STOP at any time to unsubscribe.", True
+                # Save any existing preferences
+                existing_prefs = {k: v for k, v in config.preferences.items() 
+                                if k not in ['onboarding_step', 'onboarding_complete']}
+                
+                # Accept any response that's not explicitly negative
+                negative_words = ['NO', 'NOPE', 'NAH', 'STOP', 'CANCEL', 'QUIT']
+                if not any(word in message.upper() for word in negative_words):
+                    config.preferences = {
+                        'onboarding_complete': True,
+                        **existing_prefs
+                    }
+                    self.db_session.commit()
+                    # Generate a personalized welcome message
+                    welcome_text = f"Welcome {config.name}! You're all set to receive daily messages. Text STOP at any time to unsubscribe."
+                    
+                    # If we have a message generator, add a personalized message
+                    if self.message_generator:
+                        try:
+                            context = {
+                                'user_name': config.name,
+                                'preferences': config.preferences,
+                                'personal_info': config.personal_info
+                            }
+                            personalized_msg = self.message_generator.generate_message(context)
+                            welcome_text += f"\n\nHere's your first message:\n{personalized_msg}"
+                        except Exception as e:
+                            logger.error(f"Error generating first message: {str(e)}")
+                    
+                    return welcome_text, True
+                else:
+                    return "No problem! Just reply with anything when you're ready to start receiving messages.", False
 
             # Should never reach here since all steps have a next_step or return earlier
             raise ValueError(f"Invalid onboarding step: {current_step}")
