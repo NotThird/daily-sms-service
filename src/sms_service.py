@@ -30,6 +30,13 @@ urllib3.util.ssl_.SSL_CONTEXT_FACTORY = lambda: ssl_context
 class SMSService:
     """Handles SMS operations using Twilio."""
     
+    def _refresh_client(self):
+        """Refresh the Twilio client with a new SSL context."""
+        ssl_context = create_ssl_context()
+        urllib3.util.ssl_.SSL_CONTEXT_FACTORY = lambda: ssl_context
+        self.client = Client(self.account_sid, self.auth_token)
+        self.client.http_client.verify = certifi.where()
+
     def __init__(self, account_sid: str, auth_token: str, from_number: str):
         """
         Initialize Twilio client with credentials and validate them.
@@ -45,12 +52,16 @@ class SMSService:
         urllib3.util.ssl_.DEFAULT_CERTS = certifi.where()
         urllib3.util.ssl_.SSL_CONTEXT_FACTORY = lambda: ssl_context
 
+        # Store credentials
+        self.account_sid = account_sid
+        self.auth_token = auth_token
+        self.from_number = from_number
+
         # Initialize Twilio client
-        self.client = Client(account_sid, auth_token)
+        self.client = Client(self.account_sid, self.auth_token)
         
         # Configure the client's HTTP client to use our SSL context
         self.client.http_client.verify = certifi.where()
-        self.from_number = from_number
         
         # Validate credentials on initialization
         try:
@@ -61,7 +72,7 @@ class SMSService:
             logger.error(error_msg)
             raise ValueError(error_msg)
         
-    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
+    @retry(stop=stop_after_attempt(5), wait=wait_exponential(multiplier=1, min=2, max=10))
     @rate_limit_sms()
     def send_message(self, to_number: str, message: str) -> Dict:
         """
@@ -69,13 +80,35 @@ class SMSService:
         Returns a dict with detailed status and message information.
         """
         try:
-            # Send the message
-            message = self.client.messages.create(
-                body=message,
-                from_=self.from_number,
-                to=to_number,
-                status_callback=self._get_status_callback_url()
-            )
+            # Try sending with current client
+            try:
+                message = self.client.messages.create(
+                    body=message,
+                    from_=self.from_number,
+                    to=to_number,
+                    status_callback=self._get_status_callback_url()
+                )
+            except Exception as e:
+                if 'SSL' in str(e):
+                    logger.info("SSL error encountered, refreshing client...")
+                    # Try up to 3 times with fresh client
+                    for attempt in range(3):
+                        try:
+                            self._refresh_client()
+                            message = self.client.messages.create(
+                                body=message,
+                                from_=self.from_number,
+                                to=to_number,
+                                status_callback=self._get_status_callback_url()
+                            )
+                            break
+                        except Exception as retry_e:
+                            if attempt == 2:  # Last attempt failed
+                                raise retry_e
+                            logger.warning(f"Retry {attempt + 1} failed, trying again...")
+                            time.sleep(1)  # Brief pause between retries
+                else:
+                    raise
             
             logger.info(f"Message sent successfully. SID: {message.sid}")
             
