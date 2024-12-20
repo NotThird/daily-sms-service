@@ -78,7 +78,12 @@ onboarding_service = OnboardingService(db.session)
 
 # Set up SSL context for Twilio requests
 ssl_context = create_ssl_context()
+urllib3.util.ssl_.DEFAULT_CERTS = certifi.where()
 urllib3.util.ssl_.SSL_CONTEXT_FACTORY = lambda: ssl_context
+
+# Configure Twilio client to use our SSL context
+import twilio.http.http_client
+twilio.http.http_client.CA_BUNDLE = certifi.where()
 
 try:
     sms_service = SMSService(

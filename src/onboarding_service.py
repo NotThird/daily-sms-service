@@ -78,46 +78,56 @@ class OnboardingService:
                 return self.start_onboarding(recipient_id), False
 
             # Process the response based on current step
-            next_step = None
-            
             if current_step == 'name':
                 config.name = message
                 config.personal_info['name'] = message
-                next_step = 'occupation'
+                config.preferences = {'onboarding_step': 'occupation'}  # Reset preferences to just the step
+                self.db_session.commit()
+                return self.ONBOARDING_STEPS['occupation'], False
                 
             elif current_step == 'occupation':
                 config.personal_info['occupation'] = message
-                next_step = 'interests'
+                config.preferences = {'onboarding_step': 'interests'}
+                self.db_session.commit()
+                return self.ONBOARDING_STEPS['interests'], False
                 
             elif current_step == 'interests':
                 config.personal_info['interests'] = [interest.strip() for interest in message.split(',')]
-                next_step = 'style'
+                config.preferences = {'onboarding_step': 'style'}
+                self.db_session.commit()
+                return self.ONBOARDING_STEPS['style'], False
                 
             elif current_step == 'style':
                 if message.upper() not in ['C', 'P']:
                     return "Please reply with C for Casual or P for Professional.", False
-                config.preferences['communication_style'] = 'casual' if message.upper() == 'C' else 'professional'
-                next_step = 'timing'
+                config.preferences = {
+                    'onboarding_step': 'timing',
+                    'communication_style': 'casual' if message.upper() == 'C' else 'professional'
+                }
+                self.db_session.commit()
+                return self.ONBOARDING_STEPS['timing'], False
                 
             elif current_step == 'timing':
                 if message.upper() not in ['M', 'E']:
                     return "Please reply with M for morning or E for evening.", False
-                config.preferences['message_time'] = 'morning' if message.upper() == 'M' else 'evening'
-                next_step = 'confirmation'
+                config.preferences = {
+                    'onboarding_step': 'confirmation',
+                    'communication_style': config.preferences.get('communication_style'),
+                    'message_time': 'morning' if message.upper() == 'M' else 'evening'
+                }
+                self.db_session.commit()
+                return self.ONBOARDING_STEPS['confirmation'], False
                 
             elif current_step == 'confirmation':
                 if message.upper() != 'Y':
                     return "Please reply Y to confirm your registration.", False
-                config.preferences['onboarding_complete'] = True
-                config.preferences.pop('onboarding_step', None)
+                config.preferences = {
+                    'onboarding_complete': True,
+                    'communication_style': config.preferences.get('communication_style'),
+                    'message_time': config.preferences.get('message_time')
+                }
                 self.db_session.commit()
                 return f"Welcome {config.name}! You're all set to receive daily messages. Text STOP at any time to unsubscribe.", True
-
-            # Update step and commit
-            if next_step:
-                config.preferences['onboarding_step'] = next_step
-                self.db_session.commit()
-                return self.ONBOARDING_STEPS[next_step], False
 
             # Should never reach here since all steps have a next_step or return earlier
             raise ValueError(f"Invalid onboarding step: {current_step}")

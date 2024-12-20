@@ -7,12 +7,14 @@ import time
 import ssl
 import certifi
 import urllib3
+import twilio.http.http_client
 from .rate_limiter import rate_limit_sms
 
 logger = logging.getLogger(__name__)
 
-# Configure urllib3 to use system certificates
+# Configure SSL for all requests
 urllib3.util.ssl_.DEFAULT_CERTS = certifi.where()
+twilio.http.http_client.CA_BUNDLE = certifi.where()
 
 def create_ssl_context():
     """Create a secure SSL context with system certificates."""
@@ -20,6 +22,10 @@ def create_ssl_context():
     context.verify_mode = ssl.CERT_REQUIRED
     context.check_hostname = True
     return context
+
+# Set up SSL context
+ssl_context = create_ssl_context()
+urllib3.util.ssl_.SSL_CONTEXT_FACTORY = lambda: ssl_context
 
 class SMSService:
     """Handles SMS operations using Twilio."""
