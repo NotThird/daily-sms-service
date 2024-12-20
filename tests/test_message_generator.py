@@ -51,7 +51,7 @@ def test_generate_message_with_context(mock_openai, message_generator):
         id="chatcmpl-123456",
         object="chat.completion",
         created=1728933352,
-        model="gpt-4-0125-preview",
+        model="gpt-4o-mini",
         choices=[
             Mock(
                 index=0,
@@ -67,9 +67,13 @@ def test_generate_message_with_context(mock_openai, message_generator):
         usage=Mock(
             prompt_tokens=19,
             completion_tokens=10,
-            total_tokens=29
-        ),
-        system_fingerprint="fp_6b68a8204b"
+            total_tokens=29,
+            completion_tokens_details=Mock(
+                reasoning_tokens=0,
+                accepted_prediction_tokens=0,
+                rejected_prediction_tokens=0
+            )
+        )
     )
     mock_completions.create = Mock(return_value=mock_response)
     mock_chat.completions = mock_completions
@@ -100,7 +104,7 @@ def test_generate_response_with_context(mock_openai, message_generator):
         id="chatcmpl-123456",
         object="chat.completion",
         created=1728933352,
-        model="gpt-4-0125-preview",
+        model="gpt-4o-mini",
         choices=[
             Mock(
                 index=0,
@@ -116,9 +120,13 @@ def test_generate_response_with_context(mock_openai, message_generator):
         usage=Mock(
             prompt_tokens=19,
             completion_tokens=10,
-            total_tokens=29
-        ),
-        system_fingerprint="fp_6b68a8204b"
+            total_tokens=29,
+            completion_tokens_details=Mock(
+                reasoning_tokens=0,
+                accepted_prediction_tokens=0,
+                rejected_prediction_tokens=0
+            )
+        )
     )
     mock_completions.create = Mock(return_value=mock_response)
     mock_chat.completions = mock_completions
@@ -213,3 +221,70 @@ def test_validate_and_clean_message_removes_extra_spaces(message_generator):
     cleaned = message_generator._validate_and_clean_message(message)
     
     assert cleaned == "This has extra spaces"
+
+@patch('openai.OpenAI')
+def test_generate_message_with_streaming(mock_openai, message_generator):
+    mock_client = Mock()
+    mock_chat = Mock()
+    mock_completions = Mock()
+    
+    # Mock streaming response chunks
+    mock_chunks = [
+        Mock(choices=[Mock(delta=Mock(content="Test "))]),
+        Mock(choices=[Mock(delta=Mock(content="streaming "))]),
+        Mock(choices=[Mock(delta=Mock(content="message"))])
+    ]
+    mock_completions.create = Mock(return_value=mock_chunks)
+    mock_chat.completions = mock_completions
+    mock_client.chat = mock_chat
+    message_generator.client = mock_client
+
+    message = message_generator._try_generate_message(stream=True)
+    
+    assert message == "Test streaming message"
+    call_args = mock_client.chat.completions.create.call_args[1]
+    assert call_args['stream'] is True
+    assert call_args['model'] == "gpt-4o-mini"
+
+@patch('openai.OpenAI')
+def test_generate_response_with_streaming(mock_openai, message_generator):
+    mock_client = Mock()
+    mock_chat = Mock()
+    mock_completions = Mock()
+    
+    # Mock streaming response chunks
+    mock_chunks = [
+        Mock(choices=[Mock(delta=Mock(content="Test "))]),
+        Mock(choices=[Mock(delta=Mock(content="streaming "))]),
+        Mock(choices=[Mock(delta=Mock(content="response"))])
+    ]
+    mock_completions.create = Mock(return_value=mock_chunks)
+    mock_chat.completions = mock_completions
+    mock_client.chat = mock_chat
+    message_generator.client = mock_client
+
+    response = message_generator.generate_response("Hello!", stream=True)
+    
+    assert response == "Test streaming response"
+    call_args = mock_client.chat.completions.create.call_args[1]
+    assert call_args['stream'] is True
+    assert call_args['model'] == "gpt-4o-mini"
+
+def test_stream_completion_empty_response(message_generator):
+    """Test handling of empty responses in streaming mode."""
+    mock_client = Mock()
+    mock_chat = Mock()
+    mock_completions = Mock()
+    
+    # Mock empty streaming response
+    mock_chunks = [
+        Mock(choices=[Mock(delta=Mock(content=""))])
+    ]
+    mock_completions.create = Mock(return_value=mock_chunks)
+    mock_chat.completions = mock_completions
+    mock_client.chat = mock_chat
+    message_generator.client = mock_client
+
+    # Should fall back to fallback message
+    message = message_generator._stream_completion("system", "prompt")
+    assert message in message_generator.fallback_messages

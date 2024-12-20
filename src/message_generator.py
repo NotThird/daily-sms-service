@@ -36,22 +36,32 @@ class MessageGenerator:
             return self._get_fallback_message()
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
-    @rate_limit_openai(estimated_tokens=300)  # System message + prompt + response
-    def _try_generate_message(self, context: Optional[UserContext] = None) -> str:
-        """Internal method to attempt message generation with retries."""
+    @rate_limit_openai(estimated_tokens=200)  # Lower token estimate for gpt-4o-mini
+    def _try_generate_message(self, context: Optional[UserContext] = None, stream: bool = False) -> str:
+        """
+        Internal method to attempt message generation with retries.
+        
+        Args:
+            context: Optional user context for personalization
+            stream: Whether to stream the response. If True, returns a generator.
+        """
         # Construct the prompt with any context
         prompt = self._build_prompt(context)
         system_message = self._build_system_message(context)
         
+        if stream:
+            return self._stream_completion(system_message, prompt)
+            
         completion = self.client.chat.completions.create(
-            model="gpt-4",
+            model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": system_message},
                 {"role": "user", "content": prompt}
             ],
             max_tokens=100,
             temperature=0.7,
-            top_p=0.9
+            top_p=0.9,
+            stream=False
         )
         
         message = completion.choices[0].message.content.strip()
@@ -60,20 +70,52 @@ class MessageGenerator:
             
         return self._validate_and_clean_message(message)
 
+    def _stream_completion(self, system_message: str, prompt: str) -> str:
+        """Stream the completion and accumulate the response."""
+        stream = self.client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": system_message},
+                {"role": "user", "content": prompt}
+            ],
+            max_tokens=100,
+            temperature=0.7,
+            top_p=0.9,
+            stream=True
+        )
+        
+        accumulated_message = []
+        for chunk in stream:
+            if chunk.choices[0].delta.content is not None:
+                accumulated_message.append(chunk.choices[0].delta.content)
+                
+        message = ''.join(accumulated_message).strip()
+        if not message:
+            raise ValueError("Empty message received from API")
+            
+        return self._validate_and_clean_message(message)
+
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
-    @rate_limit_openai(estimated_tokens=250)  # System message + user message + response
-    def generate_response(self, user_message: str, context: Optional[UserContext] = None) -> str:
+    @rate_limit_openai(estimated_tokens=150)  # Lower token estimate for gpt-4o-mini
+    def generate_response(self, user_message: str, context: Optional[UserContext] = None, stream: bool = False) -> str:
         """Generate a response to a user's inbound message."""
         try:
             system_message = self._build_system_message(context)
+            if stream:
+                return self._stream_completion(
+                    system_message,
+                    f"Respond briefly and positively to this message: {user_message}"
+                )
+                
             completion = self.client.chat.completions.create(
-                model="gpt-4",
+                model="gpt-4o-mini",
                 messages=[
                     {"role": "system", "content": system_message},
                     {"role": "user", "content": f"Respond briefly and positively to this message: {user_message}"}
                 ],
                 max_tokens=100,
-                temperature=0.7
+                temperature=0.7,
+                stream=False
             )
             
             message = completion.choices[0].message.content.strip()
