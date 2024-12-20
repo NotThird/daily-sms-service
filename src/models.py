@@ -51,6 +51,7 @@ class ScheduledMessage(db.Model):
     recipient_id = db.Column(db.Integer, nullable=False)
     scheduled_time = db.Column(db.DateTime, nullable=False)
     status = db.Column(db.String(20), default='pending')  # 'pending', 'sent', 'failed'
+    content = db.Column(db.Text, nullable=True)  # The message content to be sent
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     sent_at = db.Column(db.DateTime, nullable=True)
     error_message = db.Column(db.Text, nullable=True)

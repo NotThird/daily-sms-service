@@ -1,0 +1,74 @@
+{
+  "features": {
+    "split_messages": {
+      "internal_dependencies": {
+        "models.py": {
+          "reason": "Uses Recipient and ScheduledMessage models",
+          "required": true
+        },
+        "scheduler.py": {
+          "reason": "Integrates with message scheduling system",
+          "required": true
+        },
+        "sms_service.py": {
+          "reason": "Used for message delivery",
+          "required": true
+        }
+      },
+      "external_dependencies": {
+        "sqlalchemy": {
+          "reason": "Database ORM",
+          "required": true
+        },
+        "pytz": {
+          "reason": "Timezone handling",
+          "required": true
+        }
+      }
+    }
+  },
+  "migrations": {
+    "20240120_add_message_content": {
+      "internal_dependencies": {
+        "models.py": {
+          "reason": "Modifies ScheduledMessage model",
+          "required": true
+        }
+      },
+      "external_dependencies": {
+        "alembic": {
+          "reason": "Database migration tool",
+          "required": true
+        },
+        "sqlalchemy": {
+          "reason": "Database schema definitions",
+          "required": true
+        }
+      }
+    }
+  },
+  "scripts": {
+    "schedule_split_message.py": {
+      "internal_dependencies": {
+        "features/split_messages/code.py": {
+          "reason": "Uses SplitMessageService",
+          "required": true
+        },
+        "models.py": {
+          "reason": "Uses Recipient model",
+          "required": true
+        }
+      },
+      "external_dependencies": {
+        "sqlalchemy": {
+          "reason": "Database connection",
+          "required": true
+        },
+        "pytz": {
+          "reason": "Timezone handling",
+          "required": true
+        }
+      }
+    }
+  }
+}

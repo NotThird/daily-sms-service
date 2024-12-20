@@ -1,0 +1,59 @@
+{
+  "src": {
+    "features": {
+      "split_messages": {
+        "code.py": {
+          "description": "Implementation of split message functionality",
+          "type": "source",
+          "last_updated": "2024-01-20"
+        },
+        "tests.py": {
+          "description": "Tests for split message functionality",
+          "type": "test",
+          "last_updated": "2024-01-20"
+        },
+        "README.md": {
+          "description": "Documentation for split message feature",
+          "type": "documentation",
+          "last_updated": "2024-01-20"
+        },
+        "FOLDER_SUMMARY.md": {
+          "description": "Overview of split messages feature folder",
+          "type": "documentation",
+          "last_updated": "2024-01-20"
+        }
+      }
+    },
+    "models.py": {
+      "description": "Database models for the application",
+      "type": "source",
+      "last_updated": "2024-01-20"
+    },
+    "scheduler.py": {
+      "description": "Message scheduling functionality",
+      "type": "source",
+      "last_updated": "2024-01-20"
+    },
+    "sms_service.py": {
+      "description": "SMS sending functionality",
+      "type": "source",
+      "last_updated": "2024-01-20"
+    }
+  },
+  "scripts": {
+    "schedule_split_message.py": {
+      "description": "Script to schedule split messages",
+      "type": "script",
+      "last_updated": "2024-01-20"
+    }
+  },
+  "migrations": {
+    "versions": {
+      "20240120_add_message_content.py": {
+        "description": "Migration for adding content field to scheduled messages",
+        "type": "migration",
+        "last_updated": "2024-01-20"
+      }
+    }
+  }
+}
