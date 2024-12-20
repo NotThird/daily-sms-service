@@ -48,9 +48,9 @@ def schedule_split_message():
         # Set scheduled time for 10:50 PM in recipients' timezone
         tz = pytz.timezone(austin.timezone)  # Assuming both recipients are in same timezone
         now = datetime.now(tz)
-        scheduled_time = now.replace(hour=22, minute=50, second=0, microsecond=0)
+        scheduled_time = now.replace(hour=23, minute=0, second=0, microsecond=0)
         
-        # If 10:50 PM has passed for today, schedule for tomorrow
+        # If 11:00 PM has passed for today, schedule for tomorrow
         if scheduled_time <= now:
             scheduled_time = scheduled_time.replace(day=scheduled_time.day + 1)
         
