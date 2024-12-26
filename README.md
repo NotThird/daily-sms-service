@@ -35,6 +35,32 @@ A cloud-based service that sends daily AI-generated positive messages via SMS us
 - Distributed rate limiting with Redis (optional)
 - Cost optimization through usage controls
 
+## System Components
+
+1. **Message Generation (src/message_generator.py)**
+   - Uses OpenAI's GPT-4 API
+   - Generates unique, positive messages
+   - Includes fallback mechanism for API failures
+   - Maintains message history to avoid repetition
+
+2. **SMS Service (src/features/sms/code.py)**
+   - Handles Twilio integration
+   - Manages message delivery
+   - Processes delivery status callbacks
+   - Handles opt-in/opt-out requests
+
+3. **Web Application (src/app.py)**
+   - Flask-based webhook handler
+   - Processes incoming messages
+   - Manages subscription status
+   - Provides health check endpoint
+
+4. **Scheduler (src/scheduler.py)**
+   - Manages daily message scheduling
+   - Handles timezone-aware delivery windows
+   - Processes scheduled messages
+   - Implements cleanup routines
+
 ## Prerequisites
 
 1. AWS Account with necessary permissions
@@ -44,49 +70,62 @@ A cloud-based service that sends daily AI-generated positive messages via SMS us
 5. GitHub account for CI/CD
 6. Redis instance (optional, for distributed rate limiting)
 
-## Setup Instructions
+## Local Development Setup
 
-1. Clone this repository
-2. Install dependencies:
+1. **Prerequisites**
    ```bash
-   pip install poetry
+   # Install Python 3.9+
+   # Install Poetry
+   curl -sSL https://install.python-poetry.org | python3 -
+
+   # Clone repository
+   git clone <repository-url>
+   cd daily-positivity
+
+   # Install dependencies
    poetry install
    ```
-3. Set up environment variables (see .env.example)
-4. Initialize database:
+
+2. **Environment Configuration**
    ```bash
+   # Copy example environment file
+   cp .env.example .env
+
+   # Edit .env with your credentials
+   # Required variables:
+   # - DATABASE_URL
+   # - OPENAI_API_KEY
+   # - TWILIO_ACCOUNT_SID
+   # - TWILIO_AUTH_TOKEN
+   # - TWILIO_FROM_NUMBER
+   ```
+
+3. **Database Setup**
+   ```bash
+   # Initialize database
    poetry run alembic upgrade head
    ```
-5. Configure rate limits in environment:
+
+4. **Running Tests**
    ```bash
-   # API Rate Limits
-   OPENAI_TOKENS_PER_MIN=10000
-   OPENAI_REQUESTS_PER_MIN=50
-   TWILIO_MESSAGES_PER_DAY=1000
-   TWILIO_MESSAGES_PER_SECOND=1
-   
-   # Optional Redis Configuration
-   REDIS_URL=redis://localhost:6379/0
+   # Run all tests with coverage
+   poetry run pytest
+
+   # Run specific test file
+   poetry run pytest tests/test_app.py
+
+   # Run tests with specific marker
+   poetry run pytest -m "not slow"
    ```
 
-## Deployment
-
-See [DEPLOYMENT.md](./DEPLOYMENT.md) for detailed deployment instructions.
-
-## Development
-
-1. Create virtual environment:
+5. **Local Development Server**
    ```bash
-   poetry shell
-   ```
-2. Run tests:
-   ```bash
-   pytest
-   ```
-3. Format code:
-   ```bash
-   black .
-   flake8
+   # Start Flask development server
+   poetry run flask run
+
+   # For testing webhooks locally
+   # Install ngrok and start tunnel
+   ngrok http 5000
    ```
 
 ## Rate Limiting
@@ -113,31 +152,73 @@ The service implements multi-level rate limiting:
    - In-memory (default)
    - Redis (distributed)
 
-## Monitoring
+## Deployment
 
-- AWS CloudWatch Logs for application logs
-- AWS CloudWatch Metrics for performance monitoring
-- Twilio Console for SMS delivery status
-- Database health metrics in AWS RDS console
-- Rate limit metrics and alerts
-- Redis monitoring (if used)
+See [DEPLOYMENT.md](./DEPLOYMENT.md) for detailed deployment instructions.
 
-## Cost Control
+## Maintenance Guide
 
-1. Rate Limiting:
-   - Prevents API cost overruns
-   - Controls SMS usage
-   - Configurable limits
+### Daily Operations
 
-2. Database:
-   - Automatic cleanup
-   - Size monitoring
-   - 90-day migration support
+1. **Monitoring**
+   - Check CloudWatch logs for errors
+   - Monitor message delivery rates
+   - Track API usage and costs
+   - Review system performance metrics
 
-3. Monitoring:
-   - Usage tracking
-   - Cost alerts
-   - Performance metrics
+2. **Database Maintenance**
+   - Regular cleanup routines
+   - Verify database health
+   - Monitor database size
+   - Check backup status
+
+3. **Security Maintenance**
+   - Rotate API keys periodically
+   - Update AWS credentials
+   - Refresh Twilio tokens
+   - Update database passwords
+
+### Troubleshooting
+
+1. **Common Issues**
+   - Message delivery failures
+   - Scheduling issues
+   - API rate limits
+   - Database connectivity
+
+2. **Error Resolution**
+   - Check application logs
+   - Verify service health
+   - Review recent changes
+   - Check infrastructure status
+
+## Best Practices
+
+1. **Code Quality**
+   - Follow PEP 8 guidelines
+   - Write comprehensive tests
+   - Document code changes
+   - Use type hints
+
+2. **Deployment**
+   - Use CI/CD pipeline
+   - Test in staging first
+   - Deploy during low-traffic periods
+   - Maintain deployment documentation
+
+3. **Data Management**
+   - Regular database backups
+   - Implement data retention policies
+   - Monitor database performance
+   - Clean up old records
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Write/update tests
+5. Submit a pull request
 
 ## License
 

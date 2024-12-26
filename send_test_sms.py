@@ -2,12 +2,25 @@ from twilio.rest import Client
 import os
 import logging
 import time
+import ssl
+import certifi
 from dotenv import load_dotenv
 from pathlib import Path
+import urllib3
 
 # Enable debug logging
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
+
+# Configure urllib3 to use system certificates
+urllib3.util.ssl_.DEFAULT_CERTS = certifi.where()
+
+# Create SSL context with system certificates
+def create_ssl_context():
+    context = ssl.create_default_context(cafile=certifi.where())
+    context.verify_mode = ssl.CERT_REQUIRED
+    context.check_hostname = True
+    return context
 
 # Get the absolute path to .env file
 env_path = Path('.') / '.env'
@@ -54,8 +67,18 @@ def send_test_sms():
         return
 
     try:
-        # Initialize Twilio client
+        # Set up SSL context
+        ssl_context = create_ssl_context()
+        
+        # Configure urllib3 to use our SSL context
+        urllib3.util.ssl_.DEFAULT_CERTS = certifi.where()
+        urllib3.util.ssl_.SSL_CONTEXT_FACTORY = lambda: ssl_context
+
+        # Initialize Twilio client with SSL context
         client = Client(account_sid, auth_token)
+        
+        # Configure the client's HTTP client to use our SSL context
+        client.http_client.verify = certifi.where()
 
         print("\nAttempting to validate credentials...")
         # Try to fetch account info first to validate credentials
@@ -102,6 +125,10 @@ def send_test_sms():
             print(f"Error code: {e.code}")
         if hasattr(e, 'msg'):
             print(f"Error message: {e.msg}")
+        # Print SSL verification paths
+        print(f"\nSSL Certificate Path: {certifi.where()}")
+        print(f"SSL Context Verify Mode: {ssl_context.verify_mode}")
+        print(f"SSL Context Check Hostname: {ssl_context.check_hostname}")
 
 if __name__ == '__main__':
     send_test_sms()

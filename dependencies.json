@@ -10,7 +10,7 @@
           "reason": "Integrates with message scheduling system",
           "required": true
         },
-        "sms_service.py": {
+        "features/sms/code.py": {
           "reason": "Used for message delivery",
           "required": true
         }
@@ -47,28 +47,5 @@
       }
     }
   },
-  "scripts": {
-    "schedule_split_message.py": {
-      "internal_dependencies": {
-        "features/split_messages/code.py": {
-          "reason": "Uses SplitMessageService",
-          "required": true
-        },
-        "models.py": {
-          "reason": "Uses Recipient model",
-          "required": true
-        }
-      },
-      "external_dependencies": {
-        "sqlalchemy": {
-          "reason": "Database connection",
-          "required": true
-        },
-        "pytz": {
-          "reason": "Timezone handling",
-          "required": true
-        }
-      }
-    }
-  }
+  "scripts": {}
 }
