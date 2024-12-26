@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify
 from flask_migrate import Migrate
 from twilio.request_validator import RequestValidator
 from flask_apscheduler import APScheduler
+from asgiref.wsgi import WsgiToAsgi
 import logging
 from logging.config import dictConfig
 from datetime import datetime
@@ -50,7 +51,7 @@ scheduler = APScheduler()
 limiter.init_app(app)
 
 # Configure SQLAlchemy
-app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL', 'postgresql://localhost/sms_app')
+app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL', 'sqlite:///app.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 # Configure APScheduler
@@ -70,6 +71,8 @@ from .sms_service import SMSService
 from .user_config_service import UserConfigService
 from .onboarding_service import OnboardingService
 from .scheduler import MessageScheduler
+from .features.preference_detection import PreferenceDetector
+from .features.notification_system import notification_manager
 
 # Initialize services
 message_generator = MessageGenerator(os.getenv('OPENAI_API_KEY'))
@@ -121,7 +124,36 @@ def schedule_daily_messages():
         except Exception as e:
             app.logger.error(f"Error in daily message scheduling: {str(e)}")
 
-@scheduler.task('interval', id='process_messages', minutes=5)
+@scheduler.task('interval', id='check_scheduling', minutes=180)  # Every 3 hours
+def check_scheduling():
+    """Check for scheduling opportunities."""
+    with app.app_context():
+        try:
+            # Get count of pending messages for next 48 hours
+            two_days = datetime.now(pytz.UTC) + timedelta(days=2)
+            pending_count = ScheduledMessage.query.filter(
+                ScheduledMessage.status == 'pending',
+                ScheduledMessage.scheduled_time <= two_days
+            ).count()
+            
+            # If no pending messages for next 48 hours, trigger scheduling
+            if pending_count == 0:
+                app.logger.info("No pending messages found for next 48 hours, running scheduler")
+                result = message_scheduler.schedule_daily_messages()
+                app.logger.info(f"Scheduling check complete: {result}")
+            else:
+                app.logger.info(f"Found {pending_count} pending messages, skipping scheduling")
+        except Exception as e:
+            app.logger.error(f"Error in scheduling check: {str(e)}")
+            # Attempt recovery
+            try:
+                app.logger.info("Attempting recovery scheduling")
+                result = message_scheduler.schedule_daily_messages()
+                app.logger.info(f"Recovery scheduling complete: {result}")
+            except Exception as recovery_error:
+                app.logger.error(f"Recovery scheduling failed: {str(recovery_error)}")
+
+@scheduler.task('interval', id='process_messages', minutes=10)  # Reduced frequency
 def process_scheduled_messages():
     """Process scheduled messages that are due."""
     with app.app_context():
@@ -145,7 +177,7 @@ def process_scheduled_messages():
         except Exception as e:
             app.logger.error(f"Error in message processing: {str(e)}")
 
-@scheduler.task('cron', id='cleanup_records', hour=1, minute=0)
+@scheduler.task('cron', id='cleanup_records', hour=2, minute=0)  # Moved to 2 AM to avoid conflict with midnight scheduling
 def cleanup_old_records():
     """Clean up old records daily."""
     with app.app_context():
@@ -218,7 +250,7 @@ def update_user_config():
 @app.route('/webhook/inbound', methods=['POST'], endpoint='handle_inbound')
 @validate_twilio_request
 @limiter.limit("60/minute")  # Limit inbound messages
-def handle_inbound_message():
+async def handle_inbound_message():
     """Handle incoming SMS messages."""
     try:
         if not sms_service:
@@ -248,6 +280,20 @@ def handle_inbound_message():
             db.session.add(recipient)
             db.session.flush()
             is_new_user = True
+            
+            # Send notification for new signup
+            try:
+                await notification_manager.handle_user_signup(str(recipient.id))
+            except Exception as e:
+                app.logger.error(f"Failed to send signup notification: {str(e)}")
+        
+        # Initialize preference detector
+        preference_detector = PreferenceDetector(db.session)
+        
+        # Analyze message for preferences
+        detected_prefs = preference_detector.analyze_message(body, recipient.id)
+        if detected_prefs:
+            app.logger.info(f"Detected preferences for user {recipient.id}: {detected_prefs}")
         
         message_log = MessageLog(
             recipient_id=recipient.id,
@@ -285,7 +331,13 @@ def handle_inbound_message():
                     app.logger.info(f"Processed onboarding response for user {recipient.id}, complete: {is_complete}")
             else:
                 app.logger.info(f"Processing regular message for user {recipient.id}")
+                # Get user context including detected preferences
                 user_context = user_config_service.get_gpt_prompt_context(recipient.id)
+                if detected_prefs:
+                    user_context['preferences'] = {
+                        **(user_context.get('preferences', {})),
+                        **detected_prefs
+                    }
                 response_text = message_generator.generate_response(body, user_context)
             
         # Commit the inbound message log first
@@ -307,6 +359,12 @@ def handle_inbound_message():
         )
         db.session.add(response_log)
         db.session.commit()
+        
+        # Send notification for message receipt
+        try:
+            await notification_manager.handle_message_receipt(str(recipient.id), str(response_log.id))
+        except Exception as e:
+            app.logger.error(f"Failed to send message receipt notification: {str(e)}")
         return jsonify({'status': 'success'})
         
     except Exception as e:
@@ -430,6 +488,15 @@ def init_app():
             app.logger.error(f"Error during application initialization: {str(e)}")
             raise
 
+# Convert WSGI app to ASGI
+asgi_app = WsgiToAsgi(app)
+
 if __name__ == '__main__':
     init_app()
-    app.run(host='0.0.0.0', port=int(os.getenv('PORT', 5000)))
+    import hypercorn.asyncio
+    import asyncio
+    
+    config = hypercorn.Config()
+    config.bind = [f"0.0.0.0:{int(os.getenv('PORT', 5000))}"]
+    
+    asyncio.run(hypercorn.asyncio.serve(asgi_app, config))

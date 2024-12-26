@@ -58,7 +58,7 @@ class MessageGenerator:
                 {"role": "system", "content": system_message},
                 {"role": "user", "content": prompt}
             ],
-            max_tokens=100,
+            max_tokens=300,
             temperature=0.7,
             top_p=0.9,
             stream=False
@@ -130,7 +130,13 @@ class MessageGenerator:
 
     def _build_system_message(self, context: Optional[UserContext] = None) -> str:
         """Build the system message incorporating user context."""
-        base_message = "You are a positive, encouraging friend who sends uplifting messages."
+        base_message = (
+            "You are a positive, encouraging friend who sends uplifting messages. "
+            "You have a great memory and adapt your communication style based on user preferences. "
+            "You notice patterns in how users like to communicate - for example, if they often use French "
+            "or prefer certain styles of communication. You remember these preferences and incorporate them "
+            "naturally in your responses."
+        )
         
         if not context:
             return base_message
@@ -142,11 +148,20 @@ class MessageGenerator:
             prefs = context['preferences']
             if 'communication_style' in prefs:
                 base_message += f" Use a {prefs['communication_style']} communication style."
+            if 'language' in prefs:
+                base_message += f" Communicate in {prefs['language']}."
+            if 'tone' in prefs:
+                base_message += f" Use a {prefs['tone']} tone."
                 
         if context.get('personal_info'):
             info = context['personal_info']
             if 'interests' in info:
                 base_message += f" Reference their interests when relevant: {', '.join(info['interests'])}."
+            if 'occupation' in info:
+                base_message += f" Consider their work as {info['occupation']}."
+            
+        if context.get('previous_messages'):
+            base_message += " Maintain consistency with previous interactions while staying fresh and engaging."
             
         return base_message
 

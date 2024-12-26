@@ -1,176 +1,90 @@
-# Deployment Guide (Render) - Minimal Cost Version
+# Deployment Guide for Render.com
 
-This guide provides instructions for deploying the Daily Positivity SMS Service using Render's free and minimal paid tiers.
+## Overview
+This application uses Flask with APScheduler for message scheduling and Gunicorn for production deployment. The scheduler is integrated into the web process to ensure consistent message scheduling and delivery.
 
-## Prerequisites
+## Deployment Steps
 
-1. [Render Account](https://render.com) (sign up if needed)
-2. OpenAI API key
-3. Twilio account with:
-   - Account SID
-   - Auth Token
-   - Phone number
-4. GitHub repository with your code
+1. Create a new Web Service on Render.com
+   - Connect your GitHub repository
+   - Select the branch to deploy
 
-## Cost-Effective Infrastructure Setup
-
-### 1. Database Setup (Free Tier)
-
-1. Log into Render Dashboard
-2. Go to "New +" > "PostgreSQL"
-3. Configure the database:
-   - Name: `daily-positivity-db`
-   - Database: `daily_positivity`
-   - User: (auto-generated)
-   - Region: Choose nearest to your users
-   - Instance Type: "Free" ($0/month)
-   - Storage: 1GB included
-4. Click "Create Database"
-5. Note the internal database URL
-
-Note: Free tier limitations
-- 90-day lifetime (can recreate)
-- Automatic pause after 1 hour of inactivity
-- Restarts on first connection
-- These limitations are acceptable for a gift service
-
-### 2. Web Service Setup
-
-1. Go to "New +" > "Web Service"
-2. Connect your GitHub repository
-3. Configure the service:
-   - Name: `daily-positivity`
-   - Environment: "Docker"
-   - Region: Same as database
-   - Instance Type: "Starter" ($7/month)
-   - Branch: `main`
-   - Build Command: (leave empty, handled by Dockerfile)
-   - Start Command: `./docker-entrypoint.sh web`
-
-4. Add Environment Variables:
+2. Configure Environment Variables
+   Required environment variables:
    ```
-   # Flask Configuration
-   FLASK_ENV=production
-   FLASK_DEBUG=0
-   DATABASE_URL=postgres://... (Internal Database URL from step 1)
-
-   # API Keys
-   OPENAI_API_KEY=your_openai_api_key
+   DATABASE_URL=postgresql://...
+   OPENAI_API_KEY=your_openai_key
    TWILIO_ACCOUNT_SID=your_twilio_sid
    TWILIO_AUTH_TOKEN=your_twilio_token
    TWILIO_FROM_NUMBER=your_twilio_number
-
-   # Webhooks
-   TWILIO_STATUS_CALLBACK_URL=https://daily-positivity.onrender.com/webhook/status
-
-   # Application Settings
-   LOG_LEVEL=INFO
-   DEFAULT_TIMEZONE=UTC
-   MESSAGE_WINDOW_START=12
-   MESSAGE_WINDOW_END=17
-
-   # Rate Limiting (Optional - has sensible defaults)
-   OPENAI_TOKENS_PER_MIN=20000
-   OPENAI_REQUESTS_PER_MIN=100
-   TWILIO_MESSAGES_PER_DAY=2000
-   TWILIO_MESSAGES_PER_SECOND=5
+   FLASK_ENV=production
+   GUNICORN_WORKERS=2
+   GUNICORN_THREADS=4
+   GUNICORN_TIMEOUT=30
+   LOG_LEVEL=info
    ```
 
-5. Click "Create Web Service"
+3. Build Settings
+   - Build Command: Leave as default (Docker will handle this)
+   - Start Command: Leave empty (Docker will handle this)
 
-## Twilio Configuration
+4. Advanced Settings
+   - Instance Type: Recommend at least 512 MB RAM
+   - Health Check Path: /health
+   - Auto-Deploy: Enable
 
-1. Log into [Twilio Console](https://console.twilio.com)
-2. Navigate to your phone number settings
-3. Update webhook URLs:
-   - Messaging webhook: `https://daily-positivity.onrender.com/webhook/inbound`
-   - Status callback: `https://daily-positivity.onrender.com/webhook/status`
-4. Save changes
+## Important Notes
 
-## Cost Breakdown
+1. Scheduler Configuration
+   - The scheduler is integrated into the web process using Gunicorn's preload feature
+   - Tasks are configured to run:
+     - Daily message scheduling: Every day at midnight UTC
+     - Schedule check: Every hour
+     - Message processing: Every 5 minutes
+     - Scheduler health check: Every 15 minutes
 
-Minimal costs:
-- PostgreSQL (Free Tier): $0/month
-- Web Service (Starter): $7/month
-Total: $7/month
+2. Database Considerations
+   - Ensure your PostgreSQL database is properly configured
+   - The application will automatically handle migrations on startup
+   - Set appropriate connection pool settings in DATABASE_URL
 
-Additional costs to consider:
-- OpenAI API usage (pay as you go)
-- Twilio message costs (pay as you go)
-
-## Monitoring
-
-### 1. Render Dashboard
-- Monitor service health
-- View logs
-- Track resource usage
-
-### 2. Database Management
-Free tier considerations:
-- Backup your data periodically (no automatic backups on free tier)
-- Service pauses after 1 hour of inactivity
-- Will restart automatically on first connection
-
-### 3. Rate Limiting Monitoring
-- Monitor rate limit logs in application logs
-- Watch for 429 (Too Many Requests) errors
-- Adjust limits if needed (via environment variables)
+3. Monitoring
+   - Use Render's logs to monitor the application
+   - The /health endpoint provides status of all components
+   - Monitor the scheduler status through logs
 
 ## Troubleshooting
 
-### Common Issues
+1. If messages aren't being scheduled:
+   - Check the logs for any scheduler-related errors
+   - Verify the scheduler is running via the /health endpoint
+   - Ensure database connectivity is stable
 
-1. Database Connection Issues
-   - Remember free tier database pauses after 1 hour
-   - First connection will take a few seconds to wake up
-   - Check service logs for connection errors
+2. If scheduled messages aren't being sent:
+   - Check Twilio credentials and quota
+   - Verify message processing logs
+   - Check for any rate limiting issues
 
-2. Webhook Failures
-   - Verify Twilio webhook URLs
-   - Check web service logs
-   - Ensure web service is running
-
-3. Message Scheduling Issues
-   - Check web service logs
-   - Verify environment variables
-   - Check database connectivity
-
-4. Rate Limiting Issues
-   - Check application logs for rate limit warnings
-   - Verify rate limit environment variables
-   - Increase limits if needed for your user base
+3. Common Issues:
+   - Database connection timeouts: Adjust pool settings
+   - Scheduler not running: Check Gunicorn worker configuration
+   - Message processing delays: Monitor system resources
 
 ## Maintenance
 
-### Regular Tasks
+1. Regular Tasks:
+   - Monitor log output for any scheduling issues
+   - Check message delivery success rates
+   - Monitor database size and cleanup old records
 
-1. Monitor logs for errors
-2. Check database usage (stay within 1GB limit)
-3. Every 90 days:
-   ```bash
-   # Run database migration script
-   python scripts/migrate_render_db.py \
-     --source-url <old-db-url> \
-     --target-url <new-db-url> \
-     --admin-url <admin-db-url> \
-     --db-name daily_positivity
-   ```
+2. Updates:
+   - Test changes locally before deploying
+   - Monitor logs after deployments
+   - Use health checks to verify system status
 
-## Deployment Checklist
-
-Before going live:
-1. [ ] Database created (free tier)
-2. [ ] Web service deployed (starter tier)
-3. [ ] Environment variables set
-4. [ ] Twilio webhooks configured
-5. [ ] Test message flow end-to-end
-6. [ ] Document production URLs
-7. [ ] Set calendar reminder for 90-day database renewal
-
-## Cost Optimization Tips
-
-1. Monitor OpenAI API usage
-2. Keep database size small
-3. Clean up old messages regularly
-4. Use efficient queries
-5. Adjust rate limits if needed based on actual usage
+## Support
+For any deployment issues:
+1. Check application logs in Render dashboard
+2. Verify environment variables are correctly set
+3. Ensure database connection is stable
+4. Monitor scheduler health through the /health endpoint

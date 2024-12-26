@@ -27,6 +27,8 @@ class MessageScheduler:
         self.message_generator = message_generator
         self.sms_service = sms_service
         self.user_config_service = user_config_service
+        self.MAX_RETRIES = 3
+        self.BATCH_SIZE = 10
 
     def schedule_daily_messages(self) -> Dict[str, int]:
         """
@@ -37,82 +39,83 @@ class MessageScheduler:
             current_time = datetime.now(pytz.UTC)
             logger.info(f"Starting daily message scheduling at {current_time}")
             
-            # Get all active recipients
-            recipients = self.db.query(Recipient).filter_by(is_active=True).all()
-            logger.info(f"Found {len(recipients)} active recipients")
+            # Get recipients who need messages scheduled for the next 3 days
+            three_days = current_time + timedelta(days=3)
+            recipients_needing_messages = self.db.query(Recipient).filter(
+                Recipient.is_active == True,
+                ~Recipient.id.in_(
+                    self.db.query(ScheduledMessage.recipient_id).filter(
+                        ScheduledMessage.status == 'pending',
+                        ScheduledMessage.scheduled_time >= current_time,
+                        ScheduledMessage.scheduled_time <= three_days
+                    )
+                )
+            ).all()
+            
+            logger.info(f"Found {len(recipients_needing_messages)} recipients needing messages")
             
             scheduled_count = 0
             failed_count = 0
             skipped_count = 0
             
-            for recipient in recipients:
-                try:
-                    # Check if recipient already has a pending message for today
-                    today_start = datetime.now(pytz.UTC).replace(hour=0, minute=0, second=0, microsecond=0)
-                    tomorrow_start = today_start + timedelta(days=1)
-                    
-                    existing_message = self.db.query(ScheduledMessage).filter(
-                        ScheduledMessage.recipient_id == recipient.id,
-                        ScheduledMessage.status == 'pending',
-                        ScheduledMessage.scheduled_time >= today_start,
-                        ScheduledMessage.scheduled_time < tomorrow_start
-                    ).first()
-                    
-                    if existing_message:
-                        logger.info(f"Skipping recipient {recipient.id} - already has pending message for today")
-                        skipped_count += 1
-                        continue
-                    
-                    # Generate time based on preferences or random time
+            # Process recipients in batches to avoid overwhelming the message generator
+            for i in range(0, len(recipients_needing_messages), self.BATCH_SIZE):
+                batch = recipients_needing_messages[i:i + self.BATCH_SIZE]
+                
+                for recipient in batch:
                     try:
-                        scheduled_time = self._generate_send_time(recipient.timezone, recipient.id)
-                        logger.info(f"Generated send time {scheduled_time} UTC for recipient {recipient.id} (timezone: {recipient.timezone})")
+                        # Generate time based on preferences or random time
+                        try:
+                            scheduled_time = self._generate_send_time(recipient.timezone, recipient.id)
+                            logger.info(f"Generated send time {scheduled_time} UTC for recipient {recipient.id} (timezone: {recipient.timezone})")
+                            
+                            # Verify the time is valid and in the future
+                            if scheduled_time <= current_time:
+                                logger.warning(f"Generated time {scheduled_time} is in the past for recipient {recipient.id}, adjusting to next day")
+                                scheduled_time = scheduled_time + timedelta(days=1)
+                        except pytz.exceptions.UnknownTimeZoneError:
+                            logger.error(f"Invalid timezone {recipient.timezone} for recipient {recipient.id}, using UTC")
+                            recipient.timezone = 'UTC'
+                            self.db.add(recipient)
+                            scheduled_time = self._generate_send_time('UTC', recipient.id)
                         
-                        # Verify the time is valid and in the future
-                        if scheduled_time <= current_time:
-                            logger.warning(f"Generated time {scheduled_time} is in the past for recipient {recipient.id}, adjusting to next day")
-                            scheduled_time = scheduled_time + timedelta(days=1)
-                    except pytz.exceptions.UnknownTimeZoneError:
-                        logger.error(f"Invalid timezone {recipient.timezone} for recipient {recipient.id}, using UTC")
-                        recipient.timezone = 'UTC'
-                        self.db.add(recipient)
-                        scheduled_time = self._generate_send_time('UTC', recipient.id)
-                    
-                    # Generate message content now
-                    try:
-                        recent_messages = self._get_recent_messages(recipient.id)
-                        message = self.message_generator.generate_message({
-                            'previous_messages': recent_messages
-                        })
-                        logger.info(f"Generated message for recipient {recipient.id}")
+                        # Generate message content now
+                        try:
+                            recent_messages = self._get_recent_messages(recipient.id)
+                            message = self.message_generator.generate_message({
+                                'previous_messages': recent_messages
+                            })
+                            logger.info(f"Generated message for recipient {recipient.id}")
+                        except Exception as e:
+                            logger.error(f"Failed to generate message for recipient {recipient.id}: {str(e)}")
+                            failed_count += 1
+                            continue
+                        
+                        # Create scheduled message with content
+                        scheduled_msg = ScheduledMessage(
+                            recipient_id=recipient.id,
+                            scheduled_time=scheduled_time,
+                            status='pending',
+                            content=message,
+                            retry_count=0
+                        )
+                        
+                        self.db.add(scheduled_msg)
+                        scheduled_count += 1
+                        logger.info(f"Scheduled message for recipient {recipient.id} at {scheduled_time}")
+                        
                     except Exception as e:
-                        logger.error(f"Failed to generate message for recipient {recipient.id}: {str(e)}")
+                        logger.error(f"Failed to schedule message for recipient {recipient.id}: {str(e)}")
                         failed_count += 1
-                        continue
-                    
-                    # Create scheduled message with content
-                    scheduled_msg = ScheduledMessage(
-                        recipient_id=recipient.id,
-                        scheduled_time=scheduled_time,
-                        status='pending',
-                        content=message
-                    )
-                    
-                    self.db.add(scheduled_msg)
-                    scheduled_count += 1
-                    logger.info(f"Scheduled message for recipient {recipient.id} at {scheduled_time}")
-                    
-                except Exception as e:
-                    logger.error(f"Failed to schedule message for recipient {recipient.id}: {str(e)}")
-                    failed_count += 1
-            
-            self.db.commit()
+                
+                # Commit after each batch
+                self.db.commit()
             
             return {
                 'scheduled': scheduled_count,
                 'failed': failed_count,
                 'skipped': skipped_count,
-                'total': len(recipients)
+                'total': len(recipients_needing_messages)
             }
             
         except Exception as e:
@@ -125,27 +128,39 @@ class MessageScheduler:
         Returns count of sent and failed messages.
         """
         try:
-            # Get all pending messages scheduled for now or earlier
             current_time = datetime.utcnow()
+            # Get messages that are due and either pending or failed (with retries remaining)
             due_messages = self.db.query(ScheduledMessage).filter(
-                ScheduledMessage.status == 'pending',
                 ScheduledMessage.scheduled_time <= current_time,
-                ScheduledMessage.content != None  # Only process messages with content
+                ScheduledMessage.content != None,  # Only process messages with content
+                (
+                    (ScheduledMessage.status == 'pending') |
+                    (
+                        (ScheduledMessage.status == 'failed') &
+                        (ScheduledMessage.retry_count < self.MAX_RETRIES)
+                    )
+                )
             ).all()
             
             sent_count = 0
             failed_count = 0
+            retry_count = 0
             
+            # Process messages in smaller batches to avoid overwhelming Twilio
             for scheduled_msg in due_messages:
                 try:
-                    # Get recipient
                     recipient = self.db.query(Recipient).get(scheduled_msg.recipient_id)
                     
                     if not recipient or not recipient.is_active:
                         scheduled_msg.status = 'cancelled'
                         continue
                     
-                    # Send the pre-generated message
+                    # If this is a retry, log it
+                    if scheduled_msg.status == 'failed':
+                        retry_count += 1
+                        logger.info(f"Retrying failed message {scheduled_msg.id} (attempt {scheduled_msg.retry_count + 1})")
+                    
+                    # Send the message
                     result = self.sms_service.send_message(
                         recipient.phone_number,
                         scheduled_msg.content
@@ -168,23 +183,29 @@ class MessageScheduler:
                         logger.info(f"Successfully sent message {scheduled_msg.id} to recipient {recipient.id}")
                         
                     else:
-                        # Log failed send
-                        scheduled_msg.status = 'failed'
+                        # Update retry count and status
+                        scheduled_msg.retry_count += 1
+                        if scheduled_msg.retry_count >= self.MAX_RETRIES:
+                            scheduled_msg.status = 'failed'
+                            failed_count += 1
                         scheduled_msg.error_message = result.get('error')
-                        failed_count += 1
                         logger.error(f"Failed to send message {scheduled_msg.id}: {result.get('error')}")
                     
                 except Exception as e:
                     logger.error(f"Error processing scheduled message {scheduled_msg.id}: {str(e)}")
-                    scheduled_msg.status = 'failed'
+                    scheduled_msg.retry_count += 1
+                    if scheduled_msg.retry_count >= self.MAX_RETRIES:
+                        scheduled_msg.status = 'failed'
+                        failed_count += 1
                     scheduled_msg.error_message = str(e)
-                    failed_count += 1
-            
-            self.db.commit()
+                
+                # Commit after each message to avoid losing progress
+                self.db.commit()
             
             return {
                 'sent': sent_count,
                 'failed': failed_count,
+                'retried': retry_count,
                 'total': len(due_messages)
             }
             
@@ -193,7 +214,7 @@ class MessageScheduler:
             raise
 
     def _generate_send_time(self, timezone_str: str, recipient_id: int) -> datetime:
-        """Generate send time based on user preferences or random time between 12 PM and 5 PM."""
+        """Generate send time based on user preferences or random time between 9 AM and 8 PM."""
         # Get current time in recipient's timezone
         tz = pytz.timezone(timezone_str)
         current_time = datetime.now(tz)
@@ -225,7 +246,7 @@ class MessageScheduler:
                 logger.warning(f"Invalid preferred_time format for recipient {recipient_id}, falling back to random time")
         
         # Fall back to random time if no valid preferred time
-        hour = random.randint(12, 16)  # 12 PM to 4 PM (to allow for minutes)
+        hour = random.randint(9, 20)  # 9 AM to 8 PM for better distribution
         minute = random.randint(0, 59)
         
         # Create naive datetime and convert to timezone-aware time

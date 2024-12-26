@@ -135,6 +135,7 @@ case "$1" in
         
         # Start Gunicorn with the combined web service and scheduler
         echo "Starting web server with integrated scheduler..."
+        # Use preload to ensure scheduler runs in the master process
         exec poetry run gunicorn \
             --bind 0.0.0.0:${PORT:-5000} \
             --workers ${GUNICORN_WORKERS:-2} \
@@ -144,6 +145,7 @@ case "$1" in
             --error-logfile - \
             --log-level ${LOG_LEVEL:-info} \
             --preload \
+            --worker-class gthread \
             "src.app:app"
         ;;
         
