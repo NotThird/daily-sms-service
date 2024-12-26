@@ -1,17 +1,135 @@
 {
   "features": {
+    "core": {
+      "internal_dependencies": {},
+      "external_dependencies": {
+        "sqlalchemy": {
+          "reason": "Database models and ORM",
+          "required": true
+        }
+      }
+    },
+    "web_app": {
+      "internal_dependencies": {
+        "features/core/code.py": {
+          "reason": "Uses database models",
+          "required": true
+        },
+        "features/rate_limiting/code.py": {
+          "reason": "Rate limiting functionality",
+          "required": true
+        }
+      },
+      "external_dependencies": {
+        "flask": {
+          "reason": "Web framework",
+          "required": true
+        }
+      }
+    },
+    "deployment_monitoring": {
+      "internal_dependencies": {
+        "features/core/code.py": {
+          "reason": "Uses database models for health checks",
+          "required": true
+        }
+      },
+      "external_dependencies": {
+        "requests": {
+          "reason": "HTTP operations for deployment verification",
+          "required": true
+        },
+        "twilio": {
+          "reason": "Message scheduling verification",
+          "required": true
+        }
+      }
+    },
+    "database_management": {
+      "internal_dependencies": {
+        "features/core/code.py": {
+          "reason": "Uses database models for migration",
+          "required": true
+        }
+      },
+      "external_dependencies": {
+        "psycopg2": {
+          "reason": "PostgreSQL database operations",
+          "required": true
+        }
+      }
+    },
+    "message_generation": {
+      "internal_dependencies": {
+        "features/core/code.py": {
+          "reason": "Uses database models for messages",
+          "required": true
+        }
+      },
+      "external_dependencies": {
+        "openai": {
+          "reason": "GPT-4-mini integration",
+          "required": true
+        }
+      }
+    },
+    "notification_system": {
+      "internal_dependencies": {
+        "features/core/code.py": {
+          "reason": "Uses database models for notifications",
+          "required": true
+        }
+      },
+      "external_dependencies": {
+        "twilio": {
+          "reason": "SMS service integration",
+          "required": true
+        }
+      }
+    },
+    "rate_limiting": {
+      "internal_dependencies": {},
+      "external_dependencies": {
+        "redis": {
+          "reason": "Rate limiting storage (optional)",
+          "required": false
+        }
+      }
+    },
+    "user_management": {
+      "internal_dependencies": {
+        "features/core/code.py": {
+          "reason": "Uses database models for user data",
+          "required": true
+        }
+      },
+      "external_dependencies": {
+        "click": {
+          "reason": "CLI interface",
+          "required": true
+        }
+      }
+    },
     "split_messages": {
       "internal_dependencies": {
-        "models.py": {
+        "features/core/code.py": {
           "reason": "Uses Recipient and ScheduledMessage models",
           "required": true
         },
-        "scheduler.py": {
+        "features/message_generation/scheduler.py": {
           "reason": "Integrates with message scheduling system",
           "required": true
         },
-        "features/sms/code.py": {
+        "features/notification_system/sms.py": {
           "reason": "Used for message delivery",
+          "required": true
+        },
+        "features/database_management/code.py": {
+          "reason": "Database maintenance and migration support",
+          "required": true
+        },
+        "features/deployment_monitoring/code.py": {
+          "reason": "Deployment verification and health monitoring",
           "required": true
         }
       },
@@ -30,7 +148,7 @@
   "migrations": {
     "20240120_add_message_content": {
       "internal_dependencies": {
-        "models.py": {
+        "features/core/code.py": {
           "reason": "Modifies ScheduledMessage model",
           "required": true
         }
@@ -47,5 +165,40 @@
       }
     }
   },
-  "scripts": {}
+  "scripts": {
+    "send_test_sms": {
+      "internal_dependencies": {
+        "features/notification_system/sms.py": {
+          "reason": "Uses SMS functionality for testing",
+          "required": true
+        }
+      },
+      "external_dependencies": {
+        "twilio": {
+          "reason": "SMS service integration",
+          "required": true
+        }
+      }
+    }
+  },
+  "docker": {
+    "entrypoint": {
+      "internal_dependencies": {
+        "alembic.ini": {
+          "reason": "Database migration configuration",
+          "required": true
+        }
+      }
+    }
+  },
+  "deployment": {
+    "documentation": {
+      "internal_dependencies": {
+        "docker/Dockerfile": {
+          "reason": "References deployment configuration",
+          "required": true
+        }
+      }
+    }
+  }
 }

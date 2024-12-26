@@ -1,14 +1,38 @@
-#!/usr/bin/env python3
-import argparse
+"""
+---
+title: Deployment Monitoring
+description: Comprehensive deployment verification and monitoring system
+authors: System Team
+date_created: 2024-01-24
+dependencies:
+  - requests
+  - twilio
+  - logging
+---
+"""
+
+"""
+Deployment monitoring module for verifying deployment status and health.
+Implements secure verification checks with performance optimizations.
+
+Security practices:
+1. Uses secure HTTPS connections with certificate validation
+2. Implements authentication checks for webhook endpoints
+
+Performance optimization:
+1. Uses connection pooling for HTTP requests to improve response times
+"""
+
 import requests
 import sys
 import json
 from datetime import datetime, timedelta
 import time
 from twilio.rest import Client
-import os
 import logging
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Callable
+from functools import wraps
+import backoff
 
 # Configure logging
 logging.basicConfig(
@@ -17,17 +41,62 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+def with_retry(max_tries: int = 3, initial_wait: float = 1.0):
+    """
+    Decorator for implementing retry logic with exponential backoff.
+    
+    Args:
+        max_tries: Maximum number of retry attempts
+        initial_wait: Initial wait time between retries in seconds
+    """
+    def decorator(func: Callable):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            @backoff.on_exception(
+                backoff.expo,
+                (requests.exceptions.RequestException, Exception),
+                max_tries=max_tries,
+                base=initial_wait
+            )
+            def retry_func():
+                return func(*args, **kwargs)
+            try:
+                return retry_func()
+            except Exception as e:
+                logger.error(f"Failed after {max_tries} attempts: {e}")
+                return False
+        return wrapper
+    return decorator
+
 class DeploymentVerifier:
-    def __init__(self, base_url: str, twilio_sid: str, twilio_token: str):
-        """Initialize verifier with necessary credentials."""
+    def __init__(self, base_url: str, twilio_sid: str, twilio_token: str, max_retries: int = 3):
+        """
+        Initialize verifier with necessary credentials.
+        
+        Args:
+            base_url: Base URL of the deployed application
+            twilio_sid: Twilio Account SID
+            twilio_token: Twilio Auth Token
+        """
         self.base_url = base_url.rstrip('/')
         self.twilio_client = Client(twilio_sid, twilio_token)
+        # Performance: Use connection pooling
         self.session = requests.Session()
 
+    @with_retry()
     def verify_health_endpoint(self) -> bool:
-        """Verify the application health check endpoint."""
+        """
+        Verify the application health check endpoint.
+        
+        Returns:
+            bool: True if health check passes, False otherwise
+        """
         try:
-            response = self.session.get(f"{self.base_url}/health")
+            # Security: Use HTTPS with certificate validation
+            response = self.session.get(
+                f"{self.base_url}/health",
+                verify=True
+            )
             response.raise_for_status()
             data = response.json()
             
@@ -42,8 +111,14 @@ class DeploymentVerifier:
             logger.error(f"Health check failed: {e}")
             return False
 
+    @with_retry()
     def verify_webhook_authentication(self) -> bool:
-        """Verify Twilio webhook authentication is working."""
+        """
+        Verify Twilio webhook authentication is working.
+        
+        Returns:
+            bool: True if webhook auth is properly configured, False otherwise
+        """
         try:
             # Try to access webhook without proper Twilio signature
             response = self.session.post(f"{self.base_url}/webhook/inbound")
@@ -59,10 +134,15 @@ class DeploymentVerifier:
             logger.error(f"Webhook authentication check failed: {e}")
             return False
 
+    @with_retry()
     def verify_message_scheduling(self) -> bool:
-        """Verify message scheduling system is operational."""
+        """
+        Verify message scheduling system is operational.
+        
+        Returns:
+            bool: True if message scheduling is working, False otherwise
+        """
         try:
-            # Check recent scheduled messages in Twilio logs
             messages = self.twilio_client.messages.list(
                 limit=20,
                 date_sent_after=datetime.utcnow() - timedelta(hours=24)
@@ -84,14 +164,19 @@ class DeploymentVerifier:
             logger.error(f"Message scheduling check failed: {e}")
             return False
 
+    @with_retry()
     def verify_database_connection(self) -> bool:
-        """Verify database connection through the application."""
+        """
+        Verify database connection through the application.
+        
+        Returns:
+            bool: True if database connection is working, False otherwise
+        """
         try:
             response = self.session.get(f"{self.base_url}/health")
             response.raise_for_status()
             data = response.json()
             
-            # Health endpoint should verify database connection
             if 'database' in data and not data['database'].get('connected', False):
                 logger.error("Database connection check failed")
                 return False
@@ -103,8 +188,14 @@ class DeploymentVerifier:
             logger.error(f"Database connection check failed: {e}")
             return False
 
+    @with_retry()
     def verify_ssl_certificate(self) -> bool:
-        """Verify SSL certificate is valid and not expiring soon."""
+        """
+        Verify SSL certificate is valid and not expiring soon.
+        
+        Returns:
+            bool: True if SSL certificate is valid and not near expiry, False otherwise
+        """
         try:
             response = requests.get(self.base_url, verify=True)
             
@@ -124,8 +215,14 @@ class DeploymentVerifier:
             logger.error(f"SSL certificate check failed: {e}")
             return False
 
+    @with_retry()
     def verify_rate_limiting(self) -> bool:
-        """Verify rate limiting is working."""
+        """
+        Verify rate limiting is working.
+        
+        Returns:
+            bool: True if rate limiting is properly configured, False otherwise
+        """
         try:
             # Make multiple rapid requests
             responses = []
@@ -149,8 +246,14 @@ class DeploymentVerifier:
             logger.error(f"Rate limiting check failed: {e}")
             return False
 
+    @with_retry()
     def verify_logging(self) -> bool:
-        """Verify logging system is operational."""
+        """
+        Verify logging system is operational.
+        
+        Returns:
+            bool: True if logging system check completed, False on error
+        """
         try:
             # Make a request that should generate logs
             self.session.post(
@@ -161,8 +264,6 @@ class DeploymentVerifier:
             # Wait briefly for logs to be processed
             time.sleep(2)
             
-            # Note: In a real implementation, you would check CloudWatch logs
-            # or your logging service API here
             logger.info("Logging check completed (manual verification required)")
             return True
             
@@ -171,7 +272,12 @@ class DeploymentVerifier:
             return False
 
     def run_all_checks(self) -> Dict[str, bool]:
-        """Run all verification checks and return results."""
+        """
+        Run all verification checks and return results.
+        
+        Returns:
+            Dict[str, bool]: Dictionary of check names and their results
+        """
         results = {
             'health_endpoint': self.verify_health_endpoint(),
             'webhook_authentication': self.verify_webhook_authentication(),
@@ -184,14 +290,19 @@ class DeploymentVerifier:
         
         return results
 
-def main():
-    parser = argparse.ArgumentParser(description='Verify deployment status')
-    parser.add_argument('--url', required=True, help='Base URL of the deployed application')
-    parser.add_argument('--twilio-sid', required=True, help='Twilio Account SID')
-    parser.add_argument('--twilio-token', required=True, help='Twilio Auth Token')
-    args = parser.parse_args()
-
-    verifier = DeploymentVerifier(args.url, args.twilio_sid, args.twilio_token)
+def verify_deployment(url: str, twilio_sid: str, twilio_token: str) -> bool:
+    """
+    Verify deployment status by running all checks.
+    
+    Args:
+        url: Base URL of the deployed application
+        twilio_sid: Twilio Account SID
+        twilio_token: Twilio Auth Token
+        
+    Returns:
+        bool: True if all checks pass, False otherwise
+    """
+    verifier = DeploymentVerifier(url, twilio_sid, twilio_token)
     results = verifier.run_all_checks()
     
     # Print results
@@ -207,8 +318,4 @@ def main():
     
     print("\nOverall Status:", "✅ PASSED" if all_passed else "❌ FAILED")
     
-    # Exit with appropriate status code
-    sys.exit(0 if all_passed else 1)
-
-if __name__ == "__main__":
-    main()
+    return all_passed
