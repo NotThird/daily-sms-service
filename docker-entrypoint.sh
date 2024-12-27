@@ -1,12 +1,50 @@
 #!/bin/bash
 set -e
 
-# Function to wait for database with increased timeout
+# Parse DATABASE_URL into PgBouncer environment variables
+parse_db_url() {
+    if [[ -z "${DATABASE_URL}" ]]; then
+        echo "ERROR: DATABASE_URL is not set"
+        exit 1
+    }
+
+    # Extract components from DATABASE_URL
+    if [[ "${DATABASE_URL}" =~ ^postgres(ql)?://([^:]+):([^@]+)@([^:]+):([^/]+)/(.+)$ ]]; then
+        export DB_USER="${BASH_REMATCH[2]}"
+        export DB_PASSWORD="${BASH_REMATCH[3]}"
+        export DB_HOST="${BASH_REMATCH[4]}"
+        export DB_PORT="${BASH_REMATCH[5]}"
+        export DB_NAME="${BASH_REMATCH[6]}"
+    else
+        echo "ERROR: Invalid DATABASE_URL format"
+        exit 1
+    fi
+}
+
+# Start PgBouncer
+start_pgbouncer() {
+    echo "Starting PgBouncer..."
+    # Replace environment variables in config
+    envsubst < /etc/pgbouncer/pgbouncer.ini > /etc/pgbouncer/pgbouncer.ini.tmp
+    mv /etc/pgbouncer/pgbouncer.ini.tmp /etc/pgbouncer/pgbouncer.ini
+    
+    # Start PgBouncer in background
+    pgbouncer -u app /etc/pgbouncer/pgbouncer.ini &
+    
+    # Wait for PgBouncer to start
+    sleep 2
+    echo "PgBouncer started"
+}
+
+# Function to wait for database with increased timeout and PgBouncer support
 wait_for_db() {
     echo "Waiting for database..."
-    local max_attempts=30  # Increased max attempts
+    local max_attempts=30
     local attempt=1
-    local wait_time=2  # Initial wait time in seconds
+    local wait_time=2
+    
+    # Set connection string to use PgBouncer
+    local PGBOUNCER_URL="postgresql://${DB_USER}:${DB_PASSWORD}@localhost:6432/${DB_NAME}"
     
     while [ $attempt -le $max_attempts ]; do
         echo "Database connection attempt $attempt of $max_attempts..."
@@ -17,8 +55,11 @@ import os
 from time import sleep
 
 try:
-    # Add connection timeout
-    conn = psycopg2.connect(os.getenv('DATABASE_URL'), connect_timeout=10)
+    conn = psycopg2.connect(
+        '${PGBOUNCER_URL}',
+        connect_timeout=10,
+        application_name='health_check'
+    )
     conn.close()
     sys.exit(0)
 except psycopg2.OperationalError as e:
@@ -44,12 +85,16 @@ except psycopg2.OperationalError as e:
     return 1
 }
 
-# Function to run migrations with improved retry logic and reset capability
+# Function to run migrations with improved retry logic and PgBouncer support
 run_migrations() {
-    local max_attempts=5  # Increased max attempts
+    local max_attempts=5
     local attempt=1
-    local wait_time=5  # Initial wait time in seconds
+    local wait_time=5
     local reset_attempted=false
+    
+    # Set DATABASE_URL to use PgBouncer
+    local original_db_url="${DATABASE_URL}"
+    export DATABASE_URL="postgresql://${DB_USER}:${DB_PASSWORD}@localhost:6432/${DB_NAME}"
     
     while [ $attempt -le $max_attempts ]; do
         echo "Running database migrations (attempt $attempt of $max_attempts)..."
@@ -57,6 +102,7 @@ run_migrations() {
         # Try running migrations
         if poetry run flask db upgrade; then
             echo "Migrations completed successfully!"
+            export DATABASE_URL="${original_db_url}"
             return 0
         else
             echo "Migration attempt $attempt failed"
@@ -91,7 +137,6 @@ with engine.connect() as conn:
 "; then
                     echo "Migration state reset successfully"
                     reset_attempted=true
-                    # Reset attempt counter but keep track that we tried resetting
                     attempt=1
                     continue
                 else
@@ -118,12 +163,19 @@ with engine.connect() as conn:
         attempt=$((attempt + 1))
     done
     
+    export DATABASE_URL="${original_db_url}"
     echo "All migration attempts failed"
     return 1
 }
 
 case "$1" in
     web)
+        # Parse DATABASE_URL and setup PgBouncer environment
+        parse_db_url
+        
+        # Start PgBouncer
+        start_pgbouncer
+        
         # Wait for database before starting web server
         wait_for_db
         
@@ -133,9 +185,8 @@ case "$1" in
             exit 1
         fi
         
-        # Start Gunicorn with the combined web service and scheduler
-        echo "Starting web server with integrated scheduler..."
-        # Use preload to ensure scheduler runs in the master process
+        # Configure Gunicorn for Render
+        echo "Starting web server with Render optimizations..."
         exec poetry run gunicorn \
             --bind 0.0.0.0:${PORT:-5000} \
             --workers ${GUNICORN_WORKERS:-2} \
@@ -146,10 +197,20 @@ case "$1" in
             --log-level ${LOG_LEVEL:-info} \
             --preload \
             --worker-class gthread \
+            --max-requests 1000 \
+            --max-requests-jitter 50 \
+            --keep-alive 5 \
+            --worker-tmp-dir /dev/shm \
             "src.app:app"
         ;;
         
     test)
+        # Parse DATABASE_URL and setup PgBouncer environment
+        parse_db_url
+        
+        # Start PgBouncer
+        start_pgbouncer
+        
         # Wait for database before running tests
         wait_for_db
         
@@ -158,6 +219,12 @@ case "$1" in
         ;;
         
     shell)
+        # Parse DATABASE_URL and setup PgBouncer environment
+        parse_db_url
+        
+        # Start PgBouncer
+        start_pgbouncer
+        
         # Wait for database before starting shell
         wait_for_db
         
