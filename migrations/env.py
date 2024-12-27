@@ -12,18 +12,31 @@ from pathlib import Path
 # Add the project root directory to the Python path
 sys.path.append(str(Path(__file__).parents[1]))
 
-# Import the Flask application and database instance
-from src.features.web_app.code import app, db
-
 # this is the Alembic Config object
 config = context.config
 
-# Interpret the config file for Python logging
-if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+# Import the Flask application
+from src.features.web_app.code import app
+from src.features.core.code import db
+
+# Set up logging manually
+import logging
+logging.basicConfig(
+    format='%(levelname)-5.5s [%(name)s] %(message)s',
+    level=logging.INFO
+)
 
 # Get the database URL from the Flask app config
-config.set_main_option('sqlalchemy.url', app.config['SQLALCHEMY_DATABASE_URI'])
+with app.app_context():
+    db_url = app.config['SQLALCHEMY_DATABASE_URI']
+    # Handle SQLite URLs specially
+    if db_url.startswith('sqlite:'):
+        from sqlalchemy.engine import url as sa_url
+        url = sa_url.make_url(db_url)
+        if not url.database or url.database == ':memory:':
+            db_url = 'sqlite:///app.db'
+    
+    config.set_main_option('sqlalchemy.url', db_url)
 
 # Add your model's MetaData object here for 'autogenerate' support
 target_metadata = db.metadata

@@ -59,8 +59,8 @@ run_migrations() {
     while [ $attempt -le $max_attempts ]; do
         echo "Running database migrations (attempt $attempt of $max_attempts)..."
         
-        # Try running migrations with explicit Flask app path
-        if FLASK_APP=src.features.web_app.code poetry run flask db upgrade; then
+        # Try running migrations with explicit Flask app path and environment variables
+        if FLASK_APP=src.features.web_app.code PYTHONPATH=/app poetry run flask db upgrade; then
             echo "Migrations completed successfully!"
             export DATABASE_URL="${original_db_url}"
             return 0
@@ -71,8 +71,8 @@ run_migrations() {
             if [ "$reset_attempted" = false ] && [ $attempt -lt $max_attempts ]; then
                 echo "Attempting to reset migration state..."
                 
-                # Try to initialize a fresh database
-                if poetry run python -c "
+                # Try to initialize a fresh database with proper Python path
+                if PYTHONPATH=/app poetry run python -c "
 from sqlalchemy import create_engine, text
 import os
 
