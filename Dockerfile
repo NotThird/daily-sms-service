@@ -42,7 +42,8 @@ COPY . .
 
 # Install dependencies with caching
 RUN --mount=type=cache,target=/root/.cache/pypoetry \
-    poetry install --only main --no-interaction --no-ansi
+    poetry install --only main --no-interaction --no-ansi && \
+    poetry run pip install --no-cache-dir asgiref flask-migrate flask-sqlalchemy
 
 # Create PostgreSQL client configuration directory
 RUN mkdir -p /home/app/.postgresql && \
