@@ -24,6 +24,18 @@
         "flask": {
           "reason": "Web framework",
           "required": true
+        },
+        "asgiref": {
+          "reason": "ASGI/WSGI compatibility layer",
+          "required": true
+        },
+        "flask-migrate": {
+          "reason": "Database migrations support",
+          "required": true
+        },
+        "flask-sqlalchemy": {
+          "reason": "SQLAlchemy integration for Flask",
+          "required": true
         }
       }
     },
