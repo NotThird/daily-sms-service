@@ -155,17 +155,31 @@ def init_services():
             import twilio.http.http_client
             twilio.http.http_client.CA_BUNDLE = certifi.where()
 
-            # Initialize SMS service
-            sms_service = SMSService(
-                required_vars['TWILIO_ACCOUNT_SID'],
-                required_vars['TWILIO_AUTH_TOKEN'],
-                required_vars['TWILIO_FROM_NUMBER']
-            )
-            app.logger.info("SMS service initialized successfully")
+            # Initialize SMS service with detailed error handling
+            try:
+                app.logger.info("Initializing SMS service...")
+                app.logger.info(f"Using TWILIO_FROM_NUMBER: {required_vars['TWILIO_FROM_NUMBER']}")
+                app.logger.info(f"Using TWILIO_ACCOUNT_SID: {required_vars['TWILIO_ACCOUNT_SID'][:6]}...")
+                
+                sms_service = SMSService(
+                    required_vars['TWILIO_ACCOUNT_SID'],
+                    required_vars['TWILIO_AUTH_TOKEN'],
+                    required_vars['TWILIO_FROM_NUMBER']
+                )
+                app.logger.info("SMS service initialized successfully")
 
-            # Update notification manager with SMS service
-            notification_manager.sms_service = sms_service
-            app.logger.info("Notification manager updated with SMS service")
+                # Update notification manager with SMS service
+                notification_manager.sms_service = sms_service
+                app.logger.info("Notification manager updated with SMS service")
+                
+                # Test SMS service initialization
+                account = sms_service.client.api.accounts(required_vars['TWILIO_ACCOUNT_SID']).fetch()
+                app.logger.info(f"Twilio account status: {account.status}")
+                
+            except Exception as e:
+                app.logger.error(f"Failed to initialize SMS service: {str(e)}")
+                app.logger.error("SMS functionality will be disabled")
+                sms_service = None
 
             # Initialize message scheduler
             message_scheduler = MessageScheduler(db.session, message_generator, sms_service, user_config_service)

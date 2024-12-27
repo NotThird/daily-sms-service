@@ -20,11 +20,32 @@ class SMSService:
     
     def __init__(self, account_sid: str, auth_token: str, from_number: str):
         """Initialize with Twilio credentials."""
-        if not all([account_sid, auth_token, from_number]):
-            raise ValueError("Missing required Twilio credentials")
+        # Validate individual credentials
+        if not account_sid:
+            raise ValueError("TWILIO_ACCOUNT_SID is required")
+        if not auth_token:
+            raise ValueError("TWILIO_AUTH_TOKEN is required")
+        if not from_number:
+            raise ValueError("TWILIO_FROM_NUMBER is required")
             
-        self.client = Client(account_sid, auth_token)
-        self.from_number = self._sanitize_phone(from_number)
+        try:
+            # Validate phone number before creating client
+            self.from_number = self._sanitize_phone(from_number)
+            
+            # Initialize Twilio client
+            self.client = Client(account_sid, auth_token)
+            
+            # Verify credentials by making a test API call
+            account = self.client.api.accounts(account_sid).fetch()
+            if not account or account.status != "active":
+                raise ValueError(f"Twilio account not active: {account.status if account else 'unknown'}")
+                
+            print(f"SMS Service initialized successfully with account: {account_sid[:6]}...")
+            print(f"Using phone number: {self.from_number}")
+            
+        except Exception as e:
+            print(f"Failed to initialize SMS Service: {str(e)}")
+            raise
         
     @staticmethod
     def _sanitize_phone(phone: str) -> str:

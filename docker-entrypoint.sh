@@ -9,11 +9,34 @@ export FLASK_DEBUG="${FLASK_DEBUG:-False}"
 export PORT="${PORT:-5000}"
 
 # Convert boolean strings to proper Python format
-if [[ "${TWILIO_ENABLED,,}" =~ ^(true|1|yes|on)$ ]]; then
+if [[ "${TWILIO_ENABLED,,}" =~ ^(true|1|yes|on|true)$ ]]; then
     export TWILIO_ENABLED="True"
+    echo "TWILIO_ENABLED set to True"
+    
+    # Verify required Twilio variables when enabled
+    for var in TWILIO_ACCOUNT_SID TWILIO_AUTH_TOKEN TWILIO_FROM_NUMBER; do
+        if [[ -z "${!var}" ]]; then
+            echo "Error: $var is required when TWILIO_ENABLED is True"
+            exit 1
+        else
+            # Export with explicit value to ensure it's in environment
+            export $var="${!var}"
+            if [[ "$var" == "TWILIO_FROM_NUMBER" ]]; then
+                echo "$var is set to: ${!var}"
+            else
+                echo "$var is set (value redacted)"
+            fi
+        fi
+    done
 else
     export TWILIO_ENABLED="False"
+    echo "TWILIO_ENABLED set to False"
 fi
+
+# Export Flask variables with explicit values
+export FLASK_APP="${FLASK_APP:-src.features.web_app.code:app}"
+export FLASK_ENV="${FLASK_ENV:-production}"
+export FLASK_DEBUG="${FLASK_DEBUG:-False}"
 
 # Log environment variables for debugging (excluding sensitive values)
 echo "Checking environment variables..."
