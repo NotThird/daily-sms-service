@@ -50,8 +50,8 @@ start_pgbouncer() {
     local max_attempts=10
     local attempt=1
     while [ $attempt -le $max_attempts ]; do
-        if nc -z localhost 6432; then
-            echo "PgBouncer is listening on port 6432"
+        if nc -z localhost 5432; then
+            echo "PgBouncer is listening on port 5432"
             return 0
         fi
         echo "Waiting for PgBouncer to start (attempt $attempt/$max_attempts)..."
@@ -71,7 +71,7 @@ wait_for_db() {
     local wait_time=2
     
     # Set connection string to use PgBouncer
-    local PGBOUNCER_URL="postgresql://${DB_USER}:${DB_PASSWORD}@localhost:6432/${DB_NAME}"
+    local PGBOUNCER_URL="postgresql://${DB_USER}:${DB_PASSWORD}@localhost:5432/${DB_NAME}"
     
     while [ $attempt -le $max_attempts ]; do
         echo "Database connection attempt $attempt of $max_attempts..."
@@ -121,7 +121,7 @@ run_migrations() {
     
     # Set DATABASE_URL to use PgBouncer
     local original_db_url="${DATABASE_URL}"
-    export DATABASE_URL="postgresql://${DB_USER}:${DB_PASSWORD}@localhost:6432/${DB_NAME}"
+    export DATABASE_URL="postgresql://${DB_USER}:${DB_PASSWORD}@localhost:5432/${DB_NAME}"
     
     while [ $attempt -le $max_attempts ]; do
         echo "Running database migrations (attempt $attempt of $max_attempts)..."
