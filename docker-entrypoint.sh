@@ -1,77 +1,14 @@
 #!/bin/bash
 set -e
 
-# Parse DATABASE_URL into PgBouncer environment variables
-parse_db_url() {
-    if [[ -z "${DATABASE_URL}" ]]; then
-        echo "ERROR: DATABASE_URL is not set"
-        exit 1
-    fi
-
-    # Extract components from DATABASE_URL
-    if [[ "${DATABASE_URL}" =~ ^postgres(ql)?://([^:]+):([^@]+)@([^:/]+)(:([0-9]+))?/([^?[:space:]]+) ]]; then
-        export DB_USER="${BASH_REMATCH[2]}"
-        export DB_PASSWORD="${BASH_REMATCH[3]}"
-        export DB_HOST="${BASH_REMATCH[4]}"
-        export DB_PORT="${BASH_REMATCH[6]:-5432}"  # Default to 5432 if port not specified
-        export DB_NAME="${BASH_REMATCH[7]}"
-        
-        # Debug: Print extracted components (without password)
-        echo "DEBUG: Successfully parsed DATABASE_URL"
-        echo "  User: ${DB_USER}"
-        echo "  Host: ${DB_HOST}"
-        echo "  Port: ${DB_PORT}"
-        echo "  Database: ${DB_NAME}"
-    else
-        echo "ERROR: Invalid DATABASE_URL format"
-        echo "Expected format: postgresql://user:password@host:port/database"
-        exit 1
-    fi
-}
-
-# Start PgBouncer
-start_pgbouncer() {
-    echo "Starting PgBouncer..."
-    
-    # Create userlist.txt with proper permissions
-    echo "\"${DB_USER}\" \"${DB_PASSWORD}\"" > /etc/pgbouncer/userlist.txt
-    chmod 600 /etc/pgbouncer/userlist.txt
-    
-    # Replace environment variables in config
-    envsubst < /etc/pgbouncer/pgbouncer.ini > /etc/pgbouncer/pgbouncer.ini.tmp
-    mv /etc/pgbouncer/pgbouncer.ini.tmp /etc/pgbouncer/pgbouncer.ini
-    chmod 600 /etc/pgbouncer/pgbouncer.ini
-    
-    echo "Starting PgBouncer daemon..."
-    # Start PgBouncer in background with verbose logging
-    pgbouncer -v -u app /etc/pgbouncer/pgbouncer.ini &
-    
-    # Wait for PgBouncer to start and verify it's listening
-    local max_attempts=10
-    local attempt=1
-    while [ $attempt -le $max_attempts ]; do
-        if nc -z localhost 5432; then
-            echo "PgBouncer is listening on port 5432"
-            return 0
-        fi
-        echo "Waiting for PgBouncer to start (attempt $attempt/$max_attempts)..."
-        sleep 1
-        attempt=$((attempt + 1))
-    done
-    
-    echo "ERROR: PgBouncer failed to start"
-    return 1
-}
-
-# Function to wait for database with increased timeout and PgBouncer support
+# Function to wait for database with increased timeout
 wait_for_db() {
     echo "Waiting for database..."
     local max_attempts=30
     local attempt=1
     local wait_time=2
     
-    # Set connection string to use PgBouncer
-    local PGBOUNCER_URL="postgresql://${DB_USER}:${DB_PASSWORD}@localhost:5432/${DB_NAME}"
+    # Use the original DATABASE_URL
     
     while [ $attempt -le $max_attempts ]; do
         echo "Database connection attempt $attempt of $max_attempts..."
@@ -83,7 +20,7 @@ from time import sleep
 
 try:
     conn = psycopg2.connect(
-        '${PGBOUNCER_URL}',
+        os.environ['DATABASE_URL'],
         connect_timeout=10,
         application_name='health_check'
     )
@@ -112,16 +49,14 @@ except psycopg2.OperationalError as e:
     return 1
 }
 
-# Function to run migrations with improved retry logic and PgBouncer support
+# Function to run migrations with improved retry logic
 run_migrations() {
     local max_attempts=5
     local attempt=1
     local wait_time=5
     local reset_attempted=false
     
-    # Set DATABASE_URL to use PgBouncer
     local original_db_url="${DATABASE_URL}"
-    export DATABASE_URL="postgresql://${DB_USER}:${DB_PASSWORD}@localhost:5432/${DB_NAME}"
     
     while [ $attempt -le $max_attempts ]; do
         echo "Running database migrations (attempt $attempt of $max_attempts)..."
@@ -197,12 +132,6 @@ with engine.connect() as conn:
 
 case "$1" in
     web)
-        # Parse DATABASE_URL and setup PgBouncer environment
-        parse_db_url
-        
-        # Start PgBouncer
-        start_pgbouncer
-        
         # Wait for database before starting web server
         wait_for_db
         
@@ -232,12 +161,6 @@ case "$1" in
         ;;
         
     test)
-        # Parse DATABASE_URL and setup PgBouncer environment
-        parse_db_url
-        
-        # Start PgBouncer
-        start_pgbouncer
-        
         # Wait for database before running tests
         wait_for_db
         
@@ -246,12 +169,6 @@ case "$1" in
         ;;
         
     shell)
-        # Parse DATABASE_URL and setup PgBouncer environment
-        parse_db_url
-        
-        # Start PgBouncer
-        start_pgbouncer
-        
         # Wait for database before starting shell
         wait_for_db
         
