@@ -32,16 +32,33 @@ class SMSService:
             # Validate phone number before creating client
             self.from_number = self._sanitize_phone(from_number)
             
-            # Initialize Twilio client
+            # Initialize Twilio client with debug logging
+            print(f"Initializing Twilio client with account SID: {account_sid[:6]}...")
+            print(f"Using phone number: {from_number}")
+            
             self.client = Client(account_sid, auth_token)
             
             # Verify credentials by making a test API call
-            account = self.client.api.accounts(account_sid).fetch()
-            if not account or account.status != "active":
-                raise ValueError(f"Twilio account not active: {account.status if account else 'unknown'}")
+            try:
+                account = self.client.api.accounts(account_sid).fetch()
+                if not account or account.status != "active":
+                    raise ValueError(f"Twilio account not active: {account.status if account else 'unknown'}")
+                    
+                print(f"SMS Service initialized successfully with account: {account_sid[:6]}...")
+                print(f"Using phone number: {self.from_number}")
+                print(f"Account status: {account.status}")
                 
-            print(f"SMS Service initialized successfully with account: {account_sid[:6]}...")
-            print(f"Using phone number: {self.from_number}")
+                # Test message capability
+                test_msg = self.client.messages.create(
+                    to=self.from_number,  # Send to our own number as a test
+                    from_=self.from_number,
+                    body="SMS service test message"
+                )
+                print(f"Test message sent with SID: {test_msg.sid}")
+                
+            except Exception as e:
+                print(f"Error during Twilio client initialization: {str(e)}")
+                raise
             
         except Exception as e:
             print(f"Failed to initialize SMS Service: {str(e)}")

@@ -83,29 +83,43 @@ class OnboardingService:
             self.db.add(config)
             self.db.commit()
             return (
-                "Welcome! 👋 I'm your daily positivity companion. "
-                "To personalize your experience, what's your name?"
+                "Welcome! 👋 I'm your daily positivity companion, powered by AI. "
+                "I'll send you personalized messages to brighten your day. "
+                "First, what's your name?"
             )
             
         # Resume onboarding from last stage
         stage = config.preferences.get('onboarding_stage', 'name')
         if stage == 'name':
-            return "What's your name?"
+            return (
+                "Let's get started with personalizing your experience! "
+                "What's your name?"
+            )
         elif stage == 'interests':
             return (
-                "Great! What are some of your interests or hobbies? "
-                "This helps me make messages more relevant to you."
+                "Great! To make your messages more meaningful, "
+                "what are some of your interests or hobbies? "
+                "(Separate multiple interests with commas)"
             )
         elif stage == 'style':
             return (
-                "How would you prefer your messages? Choose: \n"
-                "1. Professional and motivational\n"
-                "2. Friendly and casual\n"
-                "3. Short and direct\n"
-                "(Just reply with the number)"
+                "How would you like your daily messages? Choose a style:\n\n"
+                "1. Professional & Motivational - Focused on growth and achievement\n"
+                "2. Friendly & Casual - Like a supportive friend\n"
+                "3. Short & Direct - Brief, impactful messages\n\n"
+                "Reply with 1, 2, or 3"
+            )
+        elif stage == 'time':
+            return (
+                "Last step! When would you like to receive your daily message?\n\n"
+                "Enter a time in 24-hour format (e.g., 09:00 for 9 AM, 14:30 for 2:30 PM)\n"
+                "I'll send your personalized message at this time each day."
             )
         else:
-            return "Let's start over. What's your name?"
+            return (
+                "Let's start fresh with your personalization! "
+                "What's your name?"
+            )
             
     def process_response(self, recipient_id: int, response: str) -> Tuple[str, bool]:
         """
@@ -123,8 +137,10 @@ class OnboardingService:
             config.preferences['onboarding_stage'] = 'interests'
             self.db.commit()
             return (
-                f"Nice to meet you, {config.name}! "
-                "What are some of your interests or hobbies?"
+                f"Nice to meet you, {config.name}! 👋\n\n"
+                "Now, tell me about your interests or hobbies. "
+                "This helps me create messages that resonate with you. "
+                "For example: reading, fitness, cooking, travel"
             ), False
             
         elif stage == 'interests':
@@ -135,11 +151,12 @@ class OnboardingService:
             config.preferences['onboarding_stage'] = 'style'
             self.db.commit()
             return (
-                "Great! How would you prefer your messages? Choose:\n"
-                "1. Professional and motivational\n"
-                "2. Friendly and casual\n"
-                "3. Short and direct\n"
-                "(Just reply with the number)"
+                "Thanks for sharing your interests! 🌟\n\n"
+                "How would you like your daily messages?\n\n"
+                "1. Professional & Motivational - Focused on growth and achievement\n"
+                "2. Friendly & Casual - Like a supportive friend\n"
+                "3. Short & Direct - Brief, impactful messages\n\n"
+                "Reply with 1, 2, or 3"
             ), False
             
         elif stage == 'style':
@@ -150,22 +167,43 @@ class OnboardingService:
             }
             style = style_map.get(response.strip(), 'casual')
             config.preferences['communication_style'] = style
-            config.preferences['onboarding_complete'] = True
-            del config.preferences['onboarding_stage']
+            config.preferences['onboarding_stage'] = 'time'
             self.db.commit()
+            return (
+                "What time would you like to receive your daily message? (24-hour format)\n"
+                "For example: 09:00 for 9 AM, 14:30 for 2:30 PM"
+            ), False
             
-            # Generate personalized welcome message
+        elif stage == 'time':
             try:
-                welcome = self.message_generator.generate_message(
-                    self.get_gpt_prompt_context(recipient_id)
-                )
-            except Exception:
-                welcome = (
-                    "Perfect! You're all set to receive daily positive messages. "
-                    "They'll be personalized just for you!"
-                )
+                # Validate time format
+                import re
+                if not re.match(r'^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$', response.strip()):
+                    return "Please enter a valid time in 24-hour format (e.g., 09:00, 14:30)", False
                 
-            return welcome, True
+                hour, minute = map(int, response.strip().split(':'))
+                config.preferences['message_time'] = f"{hour:02d}:{minute:02d}"
+                config.preferences['onboarding_complete'] = True
+                del config.preferences['onboarding_stage']
+                self.db.commit()
+                
+                # Generate personalized welcome message
+                try:
+                    welcome = self.message_generator.generate_message(
+                        self.get_gpt_prompt_context(recipient_id)
+                    )
+                except Exception:
+                    welcome = (
+                        f"Perfect! You're all set to receive daily positive messages at {config.preferences['message_time']}. 🎉\n\n"
+                        f"I'll craft messages that match your {style} style and interests. "
+                        "Text STOP anytime to pause messages, or RESTART to update your preferences.\n\n"
+                        "Your first personalized message is coming soon!"
+                    )
+                    
+                return welcome, True
+                
+            except ValueError:
+                return "Please enter a valid time in 24-hour format (e.g., 09:00, 14:30)", False
             
         return "I didn't quite get that. Let's start over.", False
         

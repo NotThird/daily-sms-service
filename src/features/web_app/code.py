@@ -68,9 +68,8 @@ migrate = Migrate(app, db)
 # Import services after db initialization
 from src.features.message_generation.code import MessageGenerator
 from src.features.notification_system.code import SMSService
-from src.features.user_management.code import UserConfigService
-from src.features.user_management.code import OnboardingService
-from src.features.message_generation.code import MessageScheduler
+from src.features.user_management.code import UserConfigService, OnboardingService
+from src.features.message_generation.scheduler import MessageScheduler
 from src.features.preference_detection.code import PreferenceDetector
 from src.features.notification_system.code import notification_manager
 
@@ -113,8 +112,9 @@ def init_services():
             else:
                 app.logger.info(f"{key}: {value}")
         
-        twilio_enabled = any(val == twilio_enabled_raw.lower() for val in ['true', '1', 'yes', 'on'])
-        app.logger.info(f"Twilio enabled flag after parsing: {twilio_enabled}")
+        # Force enable Twilio for testing
+        twilio_enabled = True
+        app.logger.info("Forcing Twilio enabled for testing")
         
         if not twilio_enabled:
             app.logger.info("Twilio is disabled - skipping SMS service initialization")
@@ -209,70 +209,58 @@ def ratelimit_handler(e):
     }), 429
 
 # Schedule background tasks
-@scheduler.task('cron', id='schedule_messages', hour=0, minute=0)
+@scheduler.task('interval', id='schedule_messages', minutes=5)  # Run every 5 minutes
 def schedule_daily_messages():
     """Schedule messages for all active recipients."""
     with app.app_context():
         try:
-            result = message_scheduler.schedule_daily_messages()
-            app.logger.info(f"Daily message scheduling complete: {result}")
+            # Get count of pending messages for next 24 hours
+            next_day = datetime.now(pytz.UTC) + timedelta(days=1)
+            pending_count = ScheduledMessage.query.filter(
+                ScheduledMessage.status == 'pending',
+                ScheduledMessage.scheduled_time <= next_day
+            ).count()
+            
+            # Only schedule if we have less than expected messages
+            if pending_count < 10:  # Arbitrary threshold, adjust based on user count
+                app.logger.info("Low pending message count, running scheduler")
+                result = message_scheduler.schedule_daily_messages()
+                app.logger.info(f"Daily message scheduling complete: {result}")
+            else:
+                app.logger.info(f"Found {pending_count} pending messages, skipping scheduling")
+                
         except Exception as e:
             app.logger.error(f"Error in daily message scheduling: {str(e)}")
 
-@scheduler.task('interval', id='check_scheduling', minutes=180)  # Every 3 hours
-def check_scheduling():
-    """Check for scheduling opportunities."""
-    with app.app_context():
-        try:
-            # Get count of pending messages for next 48 hours
-            two_days = datetime.now(pytz.UTC) + timedelta(days=2)
-            pending_count = ScheduledMessage.query.filter(
-                ScheduledMessage.status == 'pending',
-                ScheduledMessage.scheduled_time <= two_days
-            ).count()
-            
-            # If no pending messages for next 48 hours, trigger scheduling
-            if pending_count == 0:
-                app.logger.info("No pending messages found for next 48 hours, running scheduler")
-                result = message_scheduler.schedule_daily_messages()
-                app.logger.info(f"Scheduling check complete: {result}")
-            else:
-                app.logger.info(f"Found {pending_count} pending messages, skipping scheduling")
-        except Exception as e:
-            app.logger.error(f"Error in scheduling check: {str(e)}")
-            # Attempt recovery
-            try:
-                app.logger.info("Attempting recovery scheduling")
-                result = message_scheduler.schedule_daily_messages()
-                app.logger.info(f"Recovery scheduling complete: {result}")
-            except Exception as recovery_error:
-                app.logger.error(f"Recovery scheduling failed: {str(recovery_error)}")
-
-@scheduler.task('interval', id='process_messages', minutes=10)  # Reduced frequency
+@scheduler.task('interval', id='process_messages', minutes=1)  # Check every minute
 def process_scheduled_messages():
     """Process scheduled messages that are due."""
     with app.app_context():
         try:
             current_time = datetime.now(pytz.UTC)
-            app.logger.info(f"Starting message processing at {current_time}")
             
-            # Check for pending messages
-            pending_count = ScheduledMessage.query.filter_by(status='pending').count()
-            app.logger.info(f"Found {pending_count} pending messages")
+            # Get count of messages due in the next minute
+            next_minute = current_time + timedelta(minutes=1)
+            pending_count = ScheduledMessage.query.filter(
+                ScheduledMessage.status == 'pending',
+                ScheduledMessage.scheduled_time <= next_minute
+            ).count()
             
-            result = message_scheduler.process_scheduled_messages()
-            app.logger.info(f"Message processing complete: {result}")
-            
-            # Log any messages that weren't sent
-            if result['failed'] > 0:
-                failed_messages = ScheduledMessage.query.filter_by(status='failed').all()
-                for msg in failed_messages:
-                    app.logger.error(f"Failed message {msg.id} for recipient {msg.recipient_id}: {msg.error_message}")
-                    
+            if pending_count > 0:
+                app.logger.info(f"Found {pending_count} messages to process")
+                result = message_scheduler.process_scheduled_messages()
+                app.logger.info(f"Message processing complete: {result}")
+                
+                # Log any failures
+                if result['failed'] > 0:
+                    failed_messages = ScheduledMessage.query.filter_by(status='failed').all()
+                    for msg in failed_messages:
+                        app.logger.error(f"Failed message {msg.id} for recipient {msg.recipient_id}: {msg.error_message}")
+                        
         except Exception as e:
             app.logger.error(f"Error in message processing: {str(e)}")
 
-@scheduler.task('cron', id='cleanup_records', hour=2, minute=0)  # Moved to 2 AM to avoid conflict with midnight scheduling
+@scheduler.task('cron', id='cleanup_records', hour=3, minute=0)  # Run at 3 AM
 def cleanup_old_records():
     """Clean up old records daily."""
     with app.app_context():
@@ -281,6 +269,25 @@ def cleanup_old_records():
             app.logger.info(f"Database cleanup complete: {result}")
         except Exception as e:
             app.logger.error(f"Error in database cleanup: {str(e)}")
+
+# Add periodic scheduler check
+@scheduler.task('interval', id='check_scheduler', minutes=15)
+def check_scheduler():
+    """Periodically verify scheduler is running."""
+    with app.app_context():
+        try:
+            if not scheduler.running:
+                app.logger.warning("Scheduler not running, attempting to restart...")
+                scheduler.start()
+                if scheduler.running:
+                    app.logger.info("Successfully restarted scheduler")
+                    jobs = scheduler.get_jobs()
+                    for job in jobs:
+                        app.logger.info(f"Active job: {job.id} - Next run: {job.next_run_time}")
+                else:
+                    app.logger.error("Failed to restart scheduler")
+        except Exception as e:
+            app.logger.error(f"Error checking scheduler: {str(e)}")
 
 def validate_twilio_request(f):
     """Decorator to validate incoming Twilio requests."""
