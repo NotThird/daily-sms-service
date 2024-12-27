@@ -33,7 +33,13 @@ services:
       - key: TWILIO_STATUS_CALLBACK_URL
         value: https://daily-sms-service.onrender.com/webhook/status
       - key: TWILIO_ENABLED
-        value: "true"
+        value: "True"
+      - key: FLASK_DEBUG
+        value: "False"
+      - key: FLASK_ENV
+        value: "production"
+      - key: FLASK_APP
+        value: "src.features.web_app.code:app"
       - key: LOG_LEVEL
         value: INFO
       - key: GUNICORN_WORKERS

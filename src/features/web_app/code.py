@@ -96,13 +96,17 @@ def init_services():
             'TWILIO_FROM_NUMBER': bool(os.getenv('TWILIO_FROM_NUMBER')),
             'FLASK_APP': os.getenv('FLASK_APP'),
             'FLASK_ENV': os.getenv('FLASK_ENV'),
+            'FLASK_DEBUG': os.getenv('FLASK_DEBUG'),
             'DATABASE_URL': bool(os.getenv('DATABASE_URL'))
         }
         app.logger.info(f"Environment state: {env_vars}")
         
-        # Check if Twilio is enabled
-        twilio_enabled = str(os.getenv('TWILIO_ENABLED', 'false')).lower() == 'true'
-        app.logger.info(f"Twilio enabled: {twilio_enabled}")
+        # Check if Twilio is enabled (case-insensitive)
+        twilio_enabled_raw = os.getenv('TWILIO_ENABLED', 'false')
+        twilio_enabled = any(val == twilio_enabled_raw.lower() for val in ['true', '1', 'yes', 'on'])
+        app.logger.info(f"Twilio enabled flag: {twilio_enabled}")
+        app.logger.info(f"Raw TWILIO_ENABLED value: {twilio_enabled_raw}")
+        app.logger.info(f"Environment keys: {[k for k in os.environ.keys() if 'TWILIO' in k.upper()]}")
         
         if not twilio_enabled:
             app.logger.info("Twilio is disabled - skipping SMS service initialization")
@@ -116,10 +120,25 @@ def init_services():
             'TWILIO_FROM_NUMBER': os.getenv('TWILIO_FROM_NUMBER')
         }
         
+        # Log each variable's presence (without exposing values)
+        for var_name, value in required_vars.items():
+            if value:
+                app.logger.info(f"{var_name} is set")
+                if var_name == 'TWILIO_ACCOUNT_SID':
+                    app.logger.info(f"TWILIO_ACCOUNT_SID starts with: {value[:6]}...")
+                elif var_name == 'TWILIO_FROM_NUMBER':
+                    app.logger.info(f"TWILIO_FROM_NUMBER is: {value}")
+            else:
+                app.logger.error(f"{var_name} is not set")
+        
         missing_vars = [var for var, value in required_vars.items() if not value]
         if missing_vars:
             app.logger.error(f"Missing required variables: {', '.join(missing_vars)}")
             app.logger.error("Please configure all required environment variables in Render")
+            app.logger.error("Current environment state:")
+            for key in os.environ:
+                if not any(secret in key.lower() for secret in ['key', 'token', 'secret', 'password']):
+                    app.logger.error(f"{key}: {os.getenv(key)}")
             return
 
         try:

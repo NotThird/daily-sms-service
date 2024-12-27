@@ -1,15 +1,42 @@
 #!/bin/bash
 set -e
 
+# Ensure environment variables are properly set
+export TWILIO_ENABLED="${TWILIO_ENABLED:-False}"
+export FLASK_APP="${FLASK_APP:-src.features.web_app.code:app}"
+export FLASK_ENV="${FLASK_ENV:-production}"
+export FLASK_DEBUG="${FLASK_DEBUG:-False}"
+export PORT="${PORT:-5000}"
+
+# Convert boolean strings to proper Python format
+if [[ "${TWILIO_ENABLED,,}" =~ ^(true|1|yes|on)$ ]]; then
+    export TWILIO_ENABLED="True"
+else
+    export TWILIO_ENABLED="False"
+fi
+
 # Log environment variables for debugging (excluding sensitive values)
 echo "Checking environment variables..."
-echo "TWILIO_ENABLED=${TWILIO_ENABLED:-false}"
+echo "TWILIO_ENABLED=$TWILIO_ENABLED"
 echo "OPENAI_API_KEY=<redacted>"
 echo "TWILIO_ACCOUNT_SID=${TWILIO_ACCOUNT_SID:0:8}..."
 echo "TWILIO_FROM_NUMBER=${TWILIO_FROM_NUMBER:-not set}"
-echo "FLASK_APP=${FLASK_APP}"
-echo "FLASK_ENV=${FLASK_ENV}"
-echo "PORT=${PORT:-5000}"
+echo "FLASK_APP=$FLASK_APP"
+echo "FLASK_ENV=$FLASK_ENV"
+echo "FLASK_DEBUG=$FLASK_DEBUG"
+echo "PORT=$PORT"
+
+# Verify required variables
+if [[ "$TWILIO_ENABLED" == "True" ]]; then
+    echo "Verifying Twilio configuration..."
+    for var in TWILIO_ACCOUNT_SID TWILIO_AUTH_TOKEN TWILIO_FROM_NUMBER; do
+        if [[ -z "${!var}" ]]; then
+            echo "Error: $var is required when TWILIO_ENABLED is True"
+            exit 1
+        fi
+    done
+    echo "Twilio configuration verified"
+fi
 
 # Function to wait for database with increased timeout
 wait_for_db() {
