@@ -15,11 +15,21 @@ branch_labels = None
 depends_on = None
 
 def upgrade():
-    # Add content column to scheduled_messages table
-    op.add_column('scheduled_messages',
-        sa.Column('content', sa.Text(), nullable=True)
-    )
+    # Check if content column exists before adding it
+    from sqlalchemy.engine import reflection
+    inspector = reflection.Inspector.from_engine(op.get_bind())
+    columns = [col['name'] for col in inspector.get_columns('scheduled_messages')]
+    if 'content' not in columns:
+        # Add content column to scheduled_messages table
+        op.add_column('scheduled_messages',
+            sa.Column('content', sa.Text(), nullable=True)
+        )
 
 def downgrade():
-    # Remove content column from scheduled_messages table
-    op.drop_column('scheduled_messages', 'content')
+    # Check if content column exists before dropping it
+    from sqlalchemy.engine import reflection
+    inspector = reflection.Inspector.from_engine(op.get_bind())
+    columns = [col['name'] for col in inspector.get_columns('scheduled_messages')]
+    if 'content' in columns:
+        # Remove content column from scheduled_messages table
+        op.drop_column('scheduled_messages', 'content')
