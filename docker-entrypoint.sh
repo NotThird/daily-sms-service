@@ -1,6 +1,16 @@
 #!/bin/bash
 set -e
 
+# Log environment variables for debugging (excluding sensitive values)
+echo "Checking environment variables..."
+echo "TWILIO_ENABLED=${TWILIO_ENABLED:-false}"
+echo "OPENAI_API_KEY=<redacted>"
+echo "TWILIO_ACCOUNT_SID=${TWILIO_ACCOUNT_SID:0:8}..."
+echo "TWILIO_FROM_NUMBER=${TWILIO_FROM_NUMBER:-not set}"
+echo "FLASK_APP=${FLASK_APP}"
+echo "FLASK_ENV=${FLASK_ENV}"
+echo "PORT=${PORT:-5000}"
+
 # Function to wait for database with increased timeout
 wait_for_db() {
     echo "Waiting for database..."

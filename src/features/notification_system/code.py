@@ -28,8 +28,10 @@ class NotificationEvent:
 class NotificationManager:
     """Manages SMS notifications for various system events."""
     
-    def __init__(self, admin_phone: str = "8065351575"):
+    def __init__(self, admin_phone: str = "8065351575", sms_service: Optional[SMSService] = None):
+        """Initialize the notification manager with optional SMS service."""
         self.admin_phone = self._sanitize_phone(admin_phone)
+        self.sms_service = sms_service
         
     @staticmethod
     def _sanitize_phone(phone: str) -> str:
@@ -84,20 +86,19 @@ class NotificationManager:
             message=message
         )
         await self.send_notification(event)
-
+        
     async def send_notification(self, event: NotificationEvent) -> None:
         """
         Security Practice 2: Implement rate limiting per event type
         to prevent notification flooding.
         """
+        if not self.sms_service:
+            print("SMS service not initialized - skipping notification")
+            return
+            
         try:
             message = self._format_message(event)
-            sms_service = SMSService(
-                os.getenv('TWILIO_ACCOUNT_SID'),
-                os.getenv('TWILIO_AUTH_TOKEN'),
-                os.getenv('TWILIO_FROM_NUMBER')
-            )
-            sms_service.send_message(
+            self.sms_service.send_message(
                 to_number=self.admin_phone,
                 message=message
             )
