@@ -19,28 +19,12 @@ ENV PYTHONUNBUFFERED=1 \
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         curl \
-        build-essential \
         libpq-dev \
         git \
         procps \
-        libevent-dev \
-        pkg-config \
-        libc-ares-dev \
-        automake \
-        libtool \
-        wget \
         gettext-base \
         netcat \
-    && wget https://www.pgbouncer.org/downloads/files/${PGBOUNCER_VERSION}/pgbouncer-${PGBOUNCER_VERSION}.tar.gz \
-    && tar xvf pgbouncer-${PGBOUNCER_VERSION}.tar.gz \
-    && cd pgbouncer-${PGBOUNCER_VERSION} \
-    && ./configure --prefix=/usr/local \
-    && make \
-    && make install \
-    && cd .. \
-    && rm -rf pgbouncer-${PGBOUNCER_VERSION}* \
-    && apt-get remove -y wget automake libtool \
-    && apt-get autoremove -y \
+        pgbouncer \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Poetry
