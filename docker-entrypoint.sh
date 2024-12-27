@@ -59,50 +59,8 @@ run_migrations() {
     while [ $attempt -le $max_attempts ]; do
         echo "Running database migrations (attempt $attempt of $max_attempts)..."
         
-        # Try running migrations directly through Python with migration flag
-        if FLASK_DB_MIGRATE=1 PYTHONPATH=/app poetry run python -c "
-import os
-import sys
-import logging
-from flask_migrate import upgrade
-from src.features.web_app.code import app, db
-
-# Set up logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger('migrations')
-
-try:
-    with app.app_context():
-        logger.info('Starting database migrations')
-        # Verify database connection
-        db.engine.connect()
-        logger.info('Database connection verified')
-        
-        try:
-            # Run migrations with specific target revision
-            from alembic import command, config as alembic_config
-            from pathlib import Path
-            
-            # Create Alembic config
-            alembic_cfg = alembic_config.Config()
-            alembic_cfg.set_main_option('script_location', str(Path('/app/migrations')))
-            alembic_cfg.set_main_option('sqlalchemy.url', app.config['SQLALCHEMY_DATABASE_URI'])
-            
-            # Run upgrade to merge revision
-            command.upgrade(alembic_cfg, revision="20240124_merge_heads")
-            logger.info('Migrations completed successfully')
-            sys.exit(0)
-        except Exception as e:
-            import traceback
-            logger.error('Migration failed with error:')
-            logger.error(traceback.format_exc())
-            sys.exit(1)
-except Exception as e:
-    import traceback
-    logger.error('Migration setup failed with error:')
-    logger.error(traceback.format_exc())
-    sys.exit(1)
-"; then
+        # Try running migrations using Flask CLI
+        if FLASK_APP=src.features.web_app.code PYTHONPATH=/app poetry run flask db upgrade "20240124_merge_heads"; then
             echo "Migrations completed successfully!"
             export DATABASE_URL="${original_db_url}"
             return 0
