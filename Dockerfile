@@ -17,22 +17,28 @@ ENV PYTHONUNBUFFERED=1 \
 
 # Install system dependencies (optimized for Render)
 RUN set -ex && \
+    echo "Setting up apt..." && \
     export DEBIAN_FRONTEND=noninteractive && \
+    echo 'deb http://deb.debian.org/debian bullseye main' > /etc/apt/sources.list && \
+    echo 'deb http://security.debian.org/debian-security bullseye-security main' >> /etc/apt/sources.list && \
+    echo 'deb http://deb.debian.org/debian bullseye-updates main' >> /etc/apt/sources.list && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* && \
-    apt-get update -y --fix-missing && \
+    echo "Updating package lists..." && \
+    apt-get update -y && \
+    echo "Installing packages..." && \
     apt-get install -y --no-install-recommends \
-        curl \
-        libpq-dev \
-        git \
-        procps \
-        gettext-base \
-        netcat && \
-    apt-get update -y --fix-missing && \
-    apt-get install -y --no-install-recommends \
-        pgbouncer && \
+        curl=7.74.0-1.3+deb11u11 \
+        libpq-dev=13.12-0+deb11u1 \
+        git=1:2.30.2-1+deb11u2 \
+        procps=2:3.3.17-5 \
+        gettext-base=0.21-4 \
+        netcat=1.10-46 \
+        pgbouncer=1.15.0-1+b1 && \
+    echo "Cleaning up..." && \
     apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
+    rm -rf /var/lib/apt/lists/* && \
+    echo "Package installation completed."
 
 # Install Poetry
 RUN curl -sSL https://install.python-poetry.org | python3 -

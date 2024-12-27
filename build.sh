@@ -25,19 +25,30 @@ retry() {
     done
 }
 
-echo "Installing system dependencies..."
+echo "Setting up apt sources..."
 export DEBIAN_FRONTEND=noninteractive
-retry apt-get update
+echo 'deb http://deb.debian.org/debian bullseye main' > /etc/apt/sources.list
+echo 'deb http://security.debian.org/debian-security bullseye-security main' >> /etc/apt/sources.list
+echo 'deb http://deb.debian.org/debian bullseye-updates main' >> /etc/apt/sources.list
+
+echo "Installing system dependencies..."
+retry apt-get clean
+retry rm -rf /var/lib/apt/lists/*
+retry apt-get update -y
 retry apt-get install -y --no-install-recommends \
-    curl \
+    curl=7.74.0-1.3+deb11u11 \
     build-essential \
-    libpq-dev \
+    libpq-dev=13.12-0+deb11u1 \
     python3-dev \
-    git \
-    procps \
-    gettext-base \
-    netcat \
-    pgbouncer
+    git=1:2.30.2-1+deb11u2 \
+    procps=2:3.3.17-5 \
+    gettext-base=0.21-4 \
+    netcat=1.10-46 \
+    pgbouncer=1.15.0-1+b1
+
+echo "Cleaning up apt..."
+retry apt-get clean
+retry rm -rf /var/lib/apt/lists/*
 
 echo "Installing Poetry..."
 retry curl -sSL https://install.python-poetry.org | python3 -
