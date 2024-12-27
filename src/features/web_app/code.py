@@ -11,7 +11,7 @@ import os
 import ssl
 import certifi
 import urllib3
-from .rate_limiter import limiter
+from src.features.rate_limiting.code import limiter
 
 # Configure SSL for requests
 urllib3.util.ssl_.DEFAULT_CERTS = certifi.where()
@@ -59,20 +59,20 @@ app.config['SCHEDULER_API_ENABLED'] = False
 app.config['SCHEDULER_TIMEZONE'] = 'UTC'
 
 # Import models and initialize db
-from .models import db, Recipient, UserConfig, MessageLog, ScheduledMessage
+from src.features.core.code import db, Recipient, UserConfig, MessageLog, ScheduledMessage
 
 # Initialize app with SQLAlchemy and Migrate
 db.init_app(app)
 migrate = Migrate(app, db)
 
 # Import services after db initialization
-from .message_generator import MessageGenerator
-from .sms_service import SMSService
-from .user_config_service import UserConfigService
-from .onboarding_service import OnboardingService
-from .scheduler import MessageScheduler
-from .features.preference_detection import PreferenceDetector
-from .features.notification_system import notification_manager
+from src.features.message_generation.code import MessageGenerator
+from src.features.notification_system.code import SMSService
+from src.features.user_management.code import UserConfigService
+from src.features.user_management.code import OnboardingService
+from src.features.message_generation.code import MessageScheduler
+from src.features.preference_detection.code import PreferenceDetector
+from src.features.notification_system.code import notification_manager
 
 # Initialize services
 message_generator = MessageGenerator(os.getenv('OPENAI_API_KEY'))
