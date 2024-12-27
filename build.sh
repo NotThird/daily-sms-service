@@ -25,26 +25,31 @@ retry() {
     done
 }
 
-echo "Setting up apt sources..."
+echo "Setting up apt and PostgreSQL repository..."
 export DEBIAN_FRONTEND=noninteractive
-echo 'deb http://deb.debian.org/debian bullseye main' > /etc/apt/sources.list
-echo 'deb http://security.debian.org/debian-security bullseye-security main' >> /etc/apt/sources.list
-echo 'deb http://deb.debian.org/debian bullseye-updates main' >> /etc/apt/sources.list
+
+# Install certificates and gnupg
+retry apt-get update
+retry apt-get install -y --no-install-recommends ca-certificates gnupg
+
+# Add PostgreSQL repository
+sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt bullseye-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmor -o /etc/apt/trusted.gpg.d/postgresql.gpg
 
 echo "Installing system dependencies..."
 retry apt-get clean
 retry rm -rf /var/lib/apt/lists/*
-retry apt-get update -y
+retry apt-get update
 retry apt-get install -y --no-install-recommends \
-    curl=7.74.0-1.3+deb11u11 \
+    curl \
     build-essential \
-    libpq-dev=13.12-0+deb11u1 \
+    libpq-dev \
     python3-dev \
-    git=1:2.30.2-1+deb11u2 \
-    procps=2:3.3.17-5 \
-    gettext-base=0.21-4 \
-    netcat=1.10-46 \
-    pgbouncer=1.15.0-1+b1
+    git \
+    procps \
+    gettext-base \
+    netcat \
+    pgbouncer
 
 echo "Cleaning up apt..."
 retry apt-get clean
