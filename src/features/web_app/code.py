@@ -86,32 +86,47 @@ def init_services():
     global message_generator, user_config_service, onboarding_service, sms_service, message_scheduler
     
     if message_generator is None:
-        message_generator = MessageGenerator(os.getenv('OPENAI_API_KEY'))
-        user_config_service = UserConfigService(db.session)
-        onboarding_service = OnboardingService(db.session, message_generator)
-
-        # Set up SSL context for Twilio requests
-        ssl_context = create_ssl_context()
-        urllib3.util.ssl_.DEFAULT_CERTS = certifi.where()
-        urllib3.util.ssl_.SSL_CONTEXT_FACTORY = lambda: ssl_context
-
-        # Configure Twilio client to use our SSL context
-        import twilio.http.http_client
-        twilio.http.http_client.CA_BUNDLE = certifi.where()
+        # Check required environment variables
+        required_vars = {
+            'OPENAI_API_KEY': os.getenv('OPENAI_API_KEY'),
+            'TWILIO_ACCOUNT_SID': os.getenv('TWILIO_ACCOUNT_SID'),
+            'TWILIO_AUTH_TOKEN': os.getenv('TWILIO_AUTH_TOKEN'),
+            'TWILIO_FROM_NUMBER': os.getenv('TWILIO_FROM_NUMBER')
+        }
+        
+        missing_vars = [var for var, value in required_vars.items() if not value]
+        if missing_vars:
+            app.logger.warning(f"Missing required environment variables: {', '.join(missing_vars)}")
+            app.logger.warning("Services will be initialized in limited mode")
+            return
 
         try:
+            message_generator = MessageGenerator(required_vars['OPENAI_API_KEY'])
+            user_config_service = UserConfigService(db.session)
+            onboarding_service = OnboardingService(db.session, message_generator)
+
+            # Set up SSL context for Twilio requests
+            ssl_context = create_ssl_context()
+            urllib3.util.ssl_.DEFAULT_CERTS = certifi.where()
+            urllib3.util.ssl_.SSL_CONTEXT_FACTORY = lambda: ssl_context
+
+            # Configure Twilio client to use our SSL context
+            import twilio.http.http_client
+            twilio.http.http_client.CA_BUNDLE = certifi.where()
+
             sms_service = SMSService(
-                os.getenv('TWILIO_ACCOUNT_SID'),
-                os.getenv('TWILIO_AUTH_TOKEN'),
-                os.getenv('TWILIO_FROM_NUMBER')
+                required_vars['TWILIO_ACCOUNT_SID'],
+                required_vars['TWILIO_AUTH_TOKEN'],
+                required_vars['TWILIO_FROM_NUMBER']
             )
             app.logger.info("SMS service initialized successfully")
-        except ValueError as e:
-            app.logger.error(f"Failed to initialize SMS service: {str(e)}")
-            sms_service = None
 
-        # Initialize message scheduler
-        message_scheduler = MessageScheduler(db.session, message_generator, sms_service, user_config_service)
+            # Initialize message scheduler
+            message_scheduler = MessageScheduler(db.session, message_generator, sms_service, user_config_service)
+            app.logger.info("All services initialized successfully")
+        except Exception as e:
+            app.logger.error(f"Error initializing services: {str(e)}")
+            app.logger.warning("Services will be initialized in limited mode")
 
 # Error handlers
 @app.errorhandler(429)
@@ -264,10 +279,15 @@ def update_user_config():
 async def handle_inbound_message():
     """Handle incoming SMS messages."""
     try:
-        if not sms_service:
-            raise ValueError("SMS service not properly initialized")
-
         app.logger.info("Received inbound message")
+        
+        if not sms_service:
+            app.logger.warning("SMS service not initialized - environment variables may not be configured")
+            return jsonify({
+                'error': 'Service unavailable',
+                'message': 'The messaging service is currently being configured. Please try again later.'
+            }), 503
+
         app.logger.debug(f"Request form data: {request.form}")
 
         from_number = request.form['From']
@@ -388,10 +408,15 @@ async def handle_inbound_message():
 def handle_status_callback():
     """Handle SMS delivery status callbacks."""
     try:
-        if not sms_service:
-            raise ValueError("SMS service not properly initialized")
-
         app.logger.info("Received status callback")
+        
+        if not sms_service:
+            app.logger.warning("SMS service not initialized - environment variables may not be configured")
+            return jsonify({
+                'error': 'Service unavailable',
+                'message': 'The messaging service is currently being configured. Please try again later.'
+            }), 503
+
         app.logger.debug(f"Status callback data: {request.form}")
 
         status_result = sms_service.process_delivery_status(request.form)
