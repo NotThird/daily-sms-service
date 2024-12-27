@@ -16,6 +16,8 @@ services:
         value: 5000
       - key: FLASK_ENV
         sync: false
+      - key: FLASK_APP
+        value: src.features.web_app.code
       - key: DATABASE_URL
         fromDatabase:
           name: daily-sms-db

@@ -71,7 +71,7 @@ run_migrations() {
             if [ "$reset_attempted" = false ] && [ $attempt -lt $max_attempts ]; then
                 echo "Attempting to reset migration state..."
                 
-                # Try to reset the alembic version to initial state
+                # Try to initialize a fresh database
                 if poetry run python -c "
 from sqlalchemy import create_engine, text
 import os
@@ -87,13 +87,12 @@ with engine.connect() as conn:
     \"\"\")).scalar()
     
     if result:
-        # Reset to initial revision
-        conn.execute(text('DELETE FROM alembic_version'))
-        conn.execute(text(\"INSERT INTO alembic_version VALUES ('1a2b3c4d5e6f')\"))
+        # Remove existing version
+        conn.execute(text('DROP TABLE alembic_version'))
         conn.commit()
-        print('Successfully reset migration state')
+        print('Reset migration state')
     else:
-        print('No alembic_version table found - fresh database')
+        print('Fresh database - ready for migrations')
 "; then
                     echo "Migration state reset successfully"
                     reset_attempted=true
