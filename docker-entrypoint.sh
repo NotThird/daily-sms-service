@@ -79,8 +79,17 @@ try:
         logger.info('Database connection verified')
         
         try:
-            # Run migrations with detailed error logging
-            upgrade()
+            # Run migrations with specific target revision
+            from alembic import command, config as alembic_config
+            from pathlib import Path
+            
+            # Create Alembic config
+            alembic_cfg = alembic_config.Config()
+            alembic_cfg.set_main_option('script_location', str(Path('/app/migrations')))
+            alembic_cfg.set_main_option('sqlalchemy.url', app.config['SQLALCHEMY_DATABASE_URI'])
+            
+            # Run upgrade to merge revision
+            command.upgrade(alembic_cfg, "20240124_merge_heads")
             logger.info('Migrations completed successfully')
             sys.exit(0)
         except Exception as e:

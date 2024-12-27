@@ -62,14 +62,8 @@ target_metadata = db.metadata
 logger.info("Set target metadata for migrations")
 
 def run_migrations_offline() -> None:
+    """Run migrations in 'offline' mode."""
     logger.info("Running offline migrations")
-    """Run migrations in 'offline' mode.
-
-    This configures the context with just a URL
-    and not an Engine, though an Engine is acceptable
-    here as well.  By skipping the Engine creation
-    we don't even need a DBAPI to be available.
-    """
     url = config.get_main_option("sqlalchemy.url")
     context.configure(
         url=url,
@@ -94,15 +88,27 @@ def run_migrations_online() -> None:
         engine_config = config.get_section(config.config_ini_section, {})
         engine_config['sqlalchemy.url'] = db_url
         
+        # Handle multiple heads by using the merge revision
+        from alembic.script import ScriptDirectory
+        script = ScriptDirectory.from_config(config)
+        heads = script.get_heads()
+        logger.info(f"Found migration heads: {heads}")
+        
+        if len(heads) > 1:
+            logger.info("Multiple heads detected, using merge revision")
+            target_revision = "20240124_merge_heads"
+        else:
+            logger.info("Single head detected, using head")
+            target_revision = "head"
+            
         connectable = engine_from_config(
             engine_config,
             prefix="sqlalchemy.",
             poolclass=pool.NullPool,
         )
         
-        # Test connection before running migrations
         with connectable.connect() as connection:
-            logger.info("Database connection established")
+            logger.info(f"Running migration to target: {target_revision}")
             context.configure(
                 connection=connection,
                 target_metadata=target_metadata,
