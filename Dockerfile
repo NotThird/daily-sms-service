@@ -29,6 +29,7 @@ RUN apt-get update \
         automake \
         libtool \
         wget \
+        gettext-base \
     && wget https://www.pgbouncer.org/downloads/files/${PGBOUNCER_VERSION}/pgbouncer-${PGBOUNCER_VERSION}.tar.gz \
     && tar xvf pgbouncer-${PGBOUNCER_VERSION}.tar.gz \
     && cd pgbouncer-${PGBOUNCER_VERSION} \
