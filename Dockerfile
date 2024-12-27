@@ -45,15 +45,12 @@ RUN apt-get update \
 RUN curl -sSL https://install.python-poetry.org | python3 -
 ENV PATH="${POETRY_HOME}/bin:${PATH}"
 
-# Copy dependency files first for better caching
-COPY pyproject.toml poetry.lock ./
+# Copy the project files
+COPY . .
 
 # Install dependencies with caching
 RUN --mount=type=cache,target=/root/.cache/pypoetry \
     poetry install --only main --no-interaction --no-ansi
-
-# Copy the rest of the project
-COPY . .
 
 # Create PgBouncer configuration
 RUN mkdir -p /etc/pgbouncer \
