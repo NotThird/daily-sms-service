@@ -89,7 +89,7 @@ try:
             alembic_cfg.set_main_option('sqlalchemy.url', app.config['SQLALCHEMY_DATABASE_URI'])
             
             # Run upgrade to merge revision
-            command.upgrade(alembic_cfg, "20240124_merge_heads")
+            command.upgrade(alembic_cfg, revision="20240124_merge_heads")
             logger.info('Migrations completed successfully')
             sys.exit(0)
         except Exception as e:
