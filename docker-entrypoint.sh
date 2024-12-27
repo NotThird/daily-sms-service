@@ -59,8 +59,33 @@ run_migrations() {
     while [ $attempt -le $max_attempts ]; do
         echo "Running database migrations (attempt $attempt of $max_attempts)..."
         
-        # Try running migrations with explicit Flask app path and environment variables
-        if FLASK_APP=src.features.web_app.code PYTHONPATH=/app poetry run flask db upgrade; then
+        # Try running migrations directly through Python with migration flag
+        if FLASK_DB_MIGRATE=1 PYTHONPATH=/app poetry run python -c "
+import os
+import sys
+import logging
+from flask_migrate import upgrade
+from src.features.web_app.code import app, db
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger('migrations')
+
+try:
+    with app.app_context():
+        logger.info('Starting database migrations')
+        # Verify database connection
+        db.engine.connect()
+        logger.info('Database connection verified')
+        
+        # Run migrations
+        upgrade()
+        logger.info('Migrations completed successfully')
+        sys.exit(0)
+except Exception as e:
+    logger.error(f'Migration failed: {str(e)}')
+    sys.exit(1)
+"; then
             echo "Migrations completed successfully!"
             export DATABASE_URL="${original_db_url}"
             return 0

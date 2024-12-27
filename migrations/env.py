@@ -15,33 +15,54 @@ sys.path.append(str(Path(__file__).parents[1]))
 # this is the Alembic Config object
 config = context.config
 
-# Import the Flask application
-from src.features.web_app.code import app
-from src.features.core.code import db
-
 # Set up logging manually
 import logging
 logging.basicConfig(
     format='%(levelname)-5.5s [%(name)s] %(message)s',
     level=logging.INFO
 )
+logger = logging.getLogger('alembic.env')
 
-# Get the database URL from the Flask app config
-with app.app_context():
-    db_url = app.config['SQLALCHEMY_DATABASE_URI']
-    # Handle SQLite URLs specially
-    if db_url.startswith('sqlite:'):
-        from sqlalchemy.engine import url as sa_url
-        url = sa_url.make_url(db_url)
-        if not url.database or url.database == ':memory:':
-            db_url = 'sqlite:///app.db'
-    
-    config.set_main_option('sqlalchemy.url', db_url)
+try:
+    # Import the Flask application
+    from src.features.web_app.code import app, db
+    logger.info("Successfully imported Flask app and db")
+except Exception as e:
+    logger.error(f"Failed to import Flask app: {str(e)}")
+    raise
+
+try:
+    # Get the database URL from the Flask app config
+    with app.app_context():
+        db_url = app.config['SQLALCHEMY_DATABASE_URI']
+        logger.info(f"Got database URL from config")
+        
+        # Handle SQLite URLs specially
+        if db_url.startswith('sqlite:'):
+            from sqlalchemy.engine import url as sa_url
+            url = sa_url.make_url(db_url)
+            if not url.database or url.database == ':memory:':
+                db_url = 'sqlite:///app.db'
+                logger.info("Using SQLite database")
+        
+        config.set_main_option('sqlalchemy.url', db_url)
+        logger.info("Set database URL in Alembic config")
+        
+        # Ensure we can get the metadata
+        if not hasattr(db, 'metadata'):
+            logger.error("Database instance has no metadata attribute")
+            raise AttributeError("Database instance has no metadata attribute")
+        logger.info("Successfully accessed database metadata")
+except Exception as e:
+    logger.error(f"Failed to configure database: {str(e)}")
+    raise
 
 # Add your model's MetaData object here for 'autogenerate' support
 target_metadata = db.metadata
+logger.info("Set target metadata for migrations")
 
 def run_migrations_offline() -> None:
+    logger.info("Running offline migrations")
     """Run migrations in 'offline' mode.
 
     This configures the context with just a URL
@@ -61,6 +82,7 @@ def run_migrations_offline() -> None:
         context.run_migrations()
 
 def run_migrations_online() -> None:
+    logger.info("Running online migrations")
     """Run migrations in 'online' mode.
 
     In this scenario we need to create an Engine
