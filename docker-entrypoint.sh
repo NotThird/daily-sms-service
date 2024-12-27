@@ -9,14 +9,22 @@ parse_db_url() {
     fi
 
     # Extract components from DATABASE_URL
-    if [[ "${DATABASE_URL}" =~ ^postgres(ql)?://([^:]+):([^@]+)@([^:]+):([^/]+)/(.+)$ ]]; then
+    if [[ "${DATABASE_URL}" =~ ^postgres(ql)?://([^:]+):([^@]+)@([^:/]+)(:([0-9]+))?/([^?[:space:]]+) ]]; then
         export DB_USER="${BASH_REMATCH[2]}"
         export DB_PASSWORD="${BASH_REMATCH[3]}"
         export DB_HOST="${BASH_REMATCH[4]}"
-        export DB_PORT="${BASH_REMATCH[5]}"
-        export DB_NAME="${BASH_REMATCH[6]}"
+        export DB_PORT="${BASH_REMATCH[6]:-5432}"  # Default to 5432 if port not specified
+        export DB_NAME="${BASH_REMATCH[7]}"
+        
+        # Debug: Print extracted components (without password)
+        echo "DEBUG: Successfully parsed DATABASE_URL"
+        echo "  User: ${DB_USER}"
+        echo "  Host: ${DB_HOST}"
+        echo "  Port: ${DB_PORT}"
+        echo "  Database: ${DB_NAME}"
     else
         echo "ERROR: Invalid DATABASE_URL format"
+        echo "Expected format: postgresql://user:password@host:port/database"
         exit 1
     fi
 }
