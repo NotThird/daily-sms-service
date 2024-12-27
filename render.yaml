@@ -30,6 +30,10 @@ services:
         sync: false
       - key: TWILIO_FROM_NUMBER
         sync: false
+      - key: TWILIO_STATUS_CALLBACK_URL
+        value: https://daily-sms-service.onrender.com/webhook/status
+      - key: TWILIO_ENABLED
+        value: "true"
       - key: LOG_LEVEL
         value: INFO
       - key: GUNICORN_WORKERS

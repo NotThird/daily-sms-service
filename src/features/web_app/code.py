@@ -86,18 +86,25 @@ def init_services():
     global message_generator, user_config_service, onboarding_service, sms_service, message_scheduler
     
     if message_generator is None:
-        # Check required environment variables
-        required_vars = {
-            'OPENAI_API_KEY': os.getenv('OPENAI_API_KEY'),
-            'TWILIO_ACCOUNT_SID': os.getenv('TWILIO_ACCOUNT_SID'),
-            'TWILIO_AUTH_TOKEN': os.getenv('TWILIO_AUTH_TOKEN'),
-            'TWILIO_FROM_NUMBER': os.getenv('TWILIO_FROM_NUMBER')
-        }
+        # Check if Twilio is enabled
+        twilio_enabled = os.getenv('TWILIO_ENABLED', 'false').lower() == 'true'
         
-        missing_vars = [var for var, value in required_vars.items() if not value]
-        if missing_vars:
-            app.logger.warning(f"Missing required environment variables: {', '.join(missing_vars)}")
-            app.logger.warning("Services will be initialized in limited mode")
+        if twilio_enabled:
+            # Check required environment variables
+            required_vars = {
+                'OPENAI_API_KEY': os.getenv('OPENAI_API_KEY'),
+                'TWILIO_ACCOUNT_SID': os.getenv('TWILIO_ACCOUNT_SID'),
+                'TWILIO_AUTH_TOKEN': os.getenv('TWILIO_AUTH_TOKEN'),
+                'TWILIO_FROM_NUMBER': os.getenv('TWILIO_FROM_NUMBER')
+            }
+            
+            missing_vars = [var for var, value in required_vars.items() if not value]
+            if missing_vars:
+                app.logger.error(f"Twilio is enabled but missing required variables: {', '.join(missing_vars)}")
+                app.logger.error("Please configure all required environment variables in Render")
+                return
+        else:
+            app.logger.info("Twilio is disabled - skipping SMS service initialization")
             return
 
         try:
