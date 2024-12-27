@@ -8,8 +8,6 @@ wait_for_db() {
     local attempt=1
     local wait_time=2
     
-    # Use the original DATABASE_URL
-    
     while [ $attempt -le $max_attempts ]; do
         echo "Database connection attempt $attempt of $max_attempts..."
         if poetry run python -c "
@@ -61,8 +59,8 @@ run_migrations() {
     while [ $attempt -le $max_attempts ]; do
         echo "Running database migrations (attempt $attempt of $max_attempts)..."
         
-        # Try running migrations
-        if poetry run flask db upgrade; then
+        # Try running migrations with explicit Flask app path
+        if FLASK_APP=src.features.web_app.code poetry run flask db upgrade; then
             echo "Migrations completed successfully!"
             export DATABASE_URL="${original_db_url}"
             return 0
@@ -157,7 +155,7 @@ case "$1" in
             --max-requests-jitter 50 \
             --keep-alive 5 \
             --worker-tmp-dir /dev/shm \
-            "src.app:app"
+            "src.features.web_app.code:app"
         ;;
         
     test)
