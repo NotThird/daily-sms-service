@@ -27,7 +27,7 @@ RUN set -ex && \
         git \
         procps \
         gettext-base \
-        netcat \
+        netcat-openbsd \
         postgresql-client && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* && \

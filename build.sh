@@ -39,7 +39,7 @@ retry apt-get install -y --no-install-recommends \
     git \
     procps \
     gettext-base \
-    netcat \
+    netcat-openbsd \
     postgresql-client
 
 echo "Cleaning up apt..."
