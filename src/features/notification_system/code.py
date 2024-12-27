@@ -106,19 +106,28 @@ class NotificationManager:
             # Log error but don't raise to prevent system disruption
             print(f"Failed to send notification: {str(e)}")
 
-# Initialize with debug mode to log notifications when SMS is unavailable
-notification_manager = NotificationManager(admin_phone="8065351575")
+# Initialize notification manager with lazy SMS service initialization
+notification_manager = NotificationManager(
+    admin_phone=os.getenv('TWILIO_FROM_NUMBER', "8065351575")
+)
 
-# Add debug logging for notifications when SMS is unavailable
-def log_notification(event_type: str, message: str) -> None:
-    """Log notification when SMS service is not available."""
-    print(f"[DEBUG] Would send notification: {event_type} - {message}")
+# Function to initialize SMS service
+def init_sms_service():
+    """Initialize SMS service with environment variables."""
+    if os.getenv('TWILIO_ENABLED', '').lower() == 'true':
+        try:
+            from .sms_service import SMSService
+            sms_service = SMSService(
+                account_sid=os.getenv('TWILIO_ACCOUNT_SID'),
+                auth_token=os.getenv('TWILIO_AUTH_TOKEN'),
+                from_number=os.getenv('TWILIO_FROM_NUMBER')
+            )
+            notification_manager.sms_service = sms_service
+            print("SMS service initialized successfully")
+            return True
+        except Exception as e:
+            print(f"Failed to initialize SMS service: {str(e)}")
+    return False
 
-# Override notification manager's send_notification if SMS is not available
-if not hasattr(notification_manager, 'sms_service') or notification_manager.sms_service is None:
-    async def debug_send_notification(self, event: NotificationEvent) -> None:
-        log_notification(event.event_type, event.message)
-    
-    # Monkey patch the send_notification method
-    import types
-    notification_manager.send_notification = types.MethodType(debug_send_notification, notification_manager)
+# Initialize SMS service if environment variables are available
+init_sms_service()
