@@ -30,6 +30,7 @@ RUN apt-get update \
         libtool \
         wget \
         gettext-base \
+        netcat \
     && wget https://www.pgbouncer.org/downloads/files/${PGBOUNCER_VERSION}/pgbouncer-${PGBOUNCER_VERSION}.tar.gz \
     && tar xvf pgbouncer-${PGBOUNCER_VERSION}.tar.gz \
     && cd pgbouncer-${PGBOUNCER_VERSION} \
@@ -59,6 +60,9 @@ RUN mkdir -p /etc/pgbouncer \
     && echo "* = host=\${DB_HOST} port=\${DB_PORT} user=\${DB_USER} password=\${DB_PASSWORD} dbname=\${DB_NAME}" >> /etc/pgbouncer/pgbouncer.ini \
     && echo "[pgbouncer]" >> /etc/pgbouncer/pgbouncer.ini \
     && echo "pool_mode = transaction" >> /etc/pgbouncer/pgbouncer.ini \
+    && echo "listen_port = 6432" >> /etc/pgbouncer/pgbouncer.ini \
+    && echo "listen_addr = 127.0.0.1" >> /etc/pgbouncer/pgbouncer.ini \
+    && echo "unix_socket_dir = /tmp" >> /etc/pgbouncer/pgbouncer.ini \
     && echo "max_client_conn = 1000" >> /etc/pgbouncer/pgbouncer.ini \
     && echo "default_pool_size = 20" >> /etc/pgbouncer/pgbouncer.ini \
     && echo "min_pool_size = 5" >> /etc/pgbouncer/pgbouncer.ini \
@@ -67,6 +71,7 @@ RUN mkdir -p /etc/pgbouncer \
     && echo "max_db_connections = 50" >> /etc/pgbouncer/pgbouncer.ini \
     && echo "max_user_connections = 50" >> /etc/pgbouncer/pgbouncer.ini \
     && echo "auth_type = md5" >> /etc/pgbouncer/pgbouncer.ini \
+    && echo "auth_file = /etc/pgbouncer/userlist.txt" >> /etc/pgbouncer/pgbouncer.ini \
     && echo "ignore_startup_parameters = extra_float_digits" >> /etc/pgbouncer/pgbouncer.ini
 
 # Create non-root user

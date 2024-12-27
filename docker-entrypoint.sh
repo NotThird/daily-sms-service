@@ -32,16 +32,35 @@ parse_db_url() {
 # Start PgBouncer
 start_pgbouncer() {
     echo "Starting PgBouncer..."
+    
+    # Create userlist.txt with proper permissions
+    echo "\"${DB_USER}\" \"${DB_PASSWORD}\"" > /etc/pgbouncer/userlist.txt
+    chmod 600 /etc/pgbouncer/userlist.txt
+    
     # Replace environment variables in config
     envsubst < /etc/pgbouncer/pgbouncer.ini > /etc/pgbouncer/pgbouncer.ini.tmp
     mv /etc/pgbouncer/pgbouncer.ini.tmp /etc/pgbouncer/pgbouncer.ini
+    chmod 600 /etc/pgbouncer/pgbouncer.ini
     
-    # Start PgBouncer in background
-    pgbouncer -u app /etc/pgbouncer/pgbouncer.ini &
+    echo "Starting PgBouncer daemon..."
+    # Start PgBouncer in background with verbose logging
+    pgbouncer -v -u app /etc/pgbouncer/pgbouncer.ini &
     
-    # Wait for PgBouncer to start
-    sleep 2
-    echo "PgBouncer started"
+    # Wait for PgBouncer to start and verify it's listening
+    local max_attempts=10
+    local attempt=1
+    while [ $attempt -le $max_attempts ]; do
+        if nc -z localhost 6432; then
+            echo "PgBouncer is listening on port 6432"
+            return 0
+        fi
+        echo "Waiting for PgBouncer to start (attempt $attempt/$max_attempts)..."
+        sleep 1
+        attempt=$((attempt + 1))
+    done
+    
+    echo "ERROR: PgBouncer failed to start"
+    return 1
 }
 
 # Function to wait for database with increased timeout and PgBouncer support
