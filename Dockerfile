@@ -1,5 +1,5 @@
-# Use Python 3.11 slim image as base
-FROM python:3.11-slim
+# Use Python 3.9 slim image as base (matching Render configuration)
+FROM python:3.9-slim
 
 # Set working directory
 WORKDIR /app
@@ -15,17 +15,24 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONPATH=/app \
     PGBOUNCER_VERSION=1.18.0
 
-# Install system dependencies
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
+# Install system dependencies (optimized for Render)
+RUN set -ex && \
+    export DEBIAN_FRONTEND=noninteractive && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/* && \
+    apt-get update -y --fix-missing && \
+    apt-get install -y --no-install-recommends \
         curl \
         libpq-dev \
         git \
         procps \
         gettext-base \
-        netcat \
-        pgbouncer \
-    && rm -rf /var/lib/apt/lists/*
+        netcat && \
+    apt-get update -y --fix-missing && \
+    apt-get install -y --no-install-recommends \
+        pgbouncer && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
 # Install Poetry
 RUN curl -sSL https://install.python-poetry.org | python3 -
