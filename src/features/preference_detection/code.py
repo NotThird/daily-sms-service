@@ -12,7 +12,7 @@ dependencies:
 
 from typing import Dict, Optional
 from sqlalchemy.orm import Session
-from src.models import UserConfig
+from src.features.core.code import UserConfig
 
 class PreferenceDetector:
     """Detects and manages user preferences from message interactions."""
