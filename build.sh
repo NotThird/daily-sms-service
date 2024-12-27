@@ -25,23 +25,25 @@ retry() {
     done
 }
 
-echo "Setting up apt and PostgreSQL repository..."
+echo "Setting up apt..."
 export DEBIAN_FRONTEND=noninteractive
 
-# Install certificates and gnupg
+# First install essential packages
 retry apt-get update
-retry apt-get install -y --no-install-recommends ca-certificates gnupg
+retry apt-get install -y --no-install-recommends \
+    ca-certificates \
+    curl \
+    gnupg
 
 # Add PostgreSQL repository
+echo "Setting up PostgreSQL repository..."
 sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt bullseye-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
 curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmor -o /etc/apt/trusted.gpg.d/postgresql.gpg
 
-echo "Installing system dependencies..."
-retry apt-get clean
-retry rm -rf /var/lib/apt/lists/*
+# Install remaining packages
+echo "Installing remaining packages..."
 retry apt-get update
 retry apt-get install -y --no-install-recommends \
-    curl \
     build-essential \
     libpq-dev \
     python3-dev \
