@@ -284,8 +284,18 @@ def validate_twilio_request(f):
 
         validator = RequestValidator(os.getenv('TWILIO_AUTH_TOKEN'))
         
+        # Construct the full URL that Twilio would have signed
+        if request.headers.get('X-Forwarded-Proto'):
+            url = f"{request.headers.get('X-Forwarded-Proto')}://{request.headers.get('Host')}{request.path}"
+        else:
+            url = request.url
+
+        app.logger.info(f"Validating Twilio request for URL: {url}")
+        app.logger.debug(f"Request headers: {dict(request.headers)}")
+        app.logger.debug(f"Request form data: {dict(request.form)}")
+        
         request_valid = validator.validate(
-            request.url,
+            url,
             request.form,
             request.headers.get('X-Twilio-Signature', '')
         )
