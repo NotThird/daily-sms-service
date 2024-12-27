@@ -82,28 +82,54 @@ def run_migrations_offline() -> None:
         context.run_migrations()
 
 def run_migrations_online() -> None:
+    """Run migrations in 'online' mode."""
     logger.info("Running online migrations")
-    """Run migrations in 'online' mode.
-
-    In this scenario we need to create an Engine
-    and associate a connection with the context.
-    """
-    connectable = engine_from_config(
-        config.get_section(config.config_ini_section, {}),
-        prefix="sqlalchemy.",
-        poolclass=pool.NullPool,
-    )
-
-    with connectable.connect() as connection:
-        context.configure(
-            connection=connection, 
-            target_metadata=target_metadata,
-            compare_type=True,  # Compare column types
-            compare_server_default=True,  # Compare default values
+    
+    try:
+        # Get database URL from app config
+        db_url = config.get_main_option('sqlalchemy.url')
+        logger.info(f"Using database URL from config")
+        
+        # Create engine with proper configuration
+        engine_config = config.get_section(config.config_ini_section, {})
+        engine_config['sqlalchemy.url'] = db_url
+        
+        connectable = engine_from_config(
+            engine_config,
+            prefix="sqlalchemy.",
+            poolclass=pool.NullPool,
         )
-
-        with context.begin_transaction():
-            context.run_migrations()
+        
+        # Test connection before running migrations
+        with connectable.connect() as connection:
+            logger.info("Database connection established")
+            context.configure(
+                connection=connection,
+                target_metadata=target_metadata,
+                compare_type=True,  # Compare column types
+                compare_server_default=True,  # Compare default values
+                transaction_per_migration=True,  # Run each migration in its own transaction
+                render_as_batch=True,  # Enable batch mode for SQLite compatibility
+            )
+            
+            logger.info("Starting migration transaction")
+            with context.begin_transaction():
+                try:
+                    context.run_migrations()
+                    logger.info("Migrations completed successfully")
+                except Exception as e:
+                    logger.error("Error during migrations:")
+                    logger.error(str(e))
+                    import traceback
+                    logger.error(traceback.format_exc())
+                    raise
+                
+    except Exception as e:
+        logger.error("Error setting up migration environment:")
+        logger.error(str(e))
+        import traceback
+        logger.error(traceback.format_exc())
+        raise
 
 if context.is_offline_mode():
     run_migrations_offline()

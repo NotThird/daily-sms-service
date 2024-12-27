@@ -78,12 +78,20 @@ try:
         db.engine.connect()
         logger.info('Database connection verified')
         
-        # Run migrations
-        upgrade()
-        logger.info('Migrations completed successfully')
-        sys.exit(0)
+        try:
+            # Run migrations with detailed error logging
+            upgrade()
+            logger.info('Migrations completed successfully')
+            sys.exit(0)
+        except Exception as e:
+            import traceback
+            logger.error('Migration failed with error:')
+            logger.error(traceback.format_exc())
+            sys.exit(1)
 except Exception as e:
-    logger.error(f'Migration failed: {str(e)}')
+    import traceback
+    logger.error('Migration setup failed with error:')
+    logger.error(traceback.format_exc())
     sys.exit(1)
 "; then
             echo "Migrations completed successfully!"
@@ -163,10 +171,12 @@ case "$1" in
             exit 1
         fi
         
-        # Configure Gunicorn for Render
+        # Configure Gunicorn for Render with explicit port binding
         echo "Starting web server with Render optimizations..."
+        export PORT="${PORT:-5000}"
+        echo "Binding to port: $PORT"
         exec poetry run gunicorn \
-            --bind 0.0.0.0:${PORT:-5000} \
+            --bind "0.0.0.0:$PORT" \
             --workers ${GUNICORN_WORKERS:-2} \
             --threads ${GUNICORN_THREADS:-4} \
             --timeout ${GUNICORN_TIMEOUT:-30} \
