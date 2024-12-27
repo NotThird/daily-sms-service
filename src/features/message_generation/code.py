@@ -2,7 +2,7 @@ from openai import OpenAI
 import random
 from tenacity import retry, stop_after_attempt, wait_exponential, RetryError
 from typing import Optional, Dict, List, TypedDict
-from .rate_limiter import rate_limit_openai
+from src.features.rate_limiting.code import rate_limit_openai
 
 class UserContext(TypedDict, total=False):
     user_name: str
