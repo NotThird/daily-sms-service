@@ -6,7 +6,7 @@ parse_db_url() {
     if [[ -z "${DATABASE_URL}" ]]; then
         echo "ERROR: DATABASE_URL is not set"
         exit 1
-    }
+    fi
 
     # Extract components from DATABASE_URL
     if [[ "${DATABASE_URL}" =~ ^postgres(ql)?://([^:]+):([^@]+)@([^:]+):([^/]+)/(.+)$ ]]; then
