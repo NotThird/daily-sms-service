@@ -5,12 +5,14 @@ Description: Handles SMS notifications for user signups and message events
 Authors: AI Assistant
 Date Created: 2024-01-09
 Dependencies:
-  - sms
+  - sms_service
   - user_management
   - message_generation
 """
 
+import os
 import re
+from .sms_service import SMSService
 from typing import Optional
 from dataclasses import dataclass
 from datetime import datetime
@@ -89,10 +91,13 @@ class NotificationManager:
         to prevent notification flooding.
         """
         try:
-            from src.features.sms import send_sms  # Dynamic import to avoid circular dependencies
-            
             message = self._format_message(event)
-            await send_sms(
+            sms_service = SMSService(
+                os.getenv('TWILIO_ACCOUNT_SID'),
+                os.getenv('TWILIO_AUTH_TOKEN'),
+                os.getenv('TWILIO_FROM_NUMBER')
+            )
+            sms_service.send_message(
                 to_number=self.admin_phone,
                 message=message
             )
