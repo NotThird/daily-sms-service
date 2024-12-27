@@ -37,13 +37,18 @@ class NotificationManager:
     def _sanitize_phone(phone: str) -> str:
         """
         Security Practice 1: Sanitize phone numbers to prevent injection.
-        Strips all non-numeric characters and ensures proper format.
+        Ensures proper E.164 format with country code.
         """
+        # If phone number already has + prefix, use it as is
+        if phone.startswith('+'):
+            return phone
+            
+        # Otherwise, clean and format
         clean = re.sub(r'\D', '', phone)
         if len(clean) == 10:
-            return clean
+            return f"+1{clean}"  # Add US country code
         elif len(clean) == 11 and clean.startswith('1'):
-            return clean[1:]
+            return f"+{clean}"  # Number already has country code
         raise ValueError("Invalid phone number format")
 
     def _format_message(self, event: NotificationEvent) -> str:
@@ -114,19 +119,33 @@ notification_manager = NotificationManager(
 # Function to initialize SMS service
 def init_sms_service():
     """Initialize SMS service with environment variables."""
-    if os.getenv('TWILIO_ENABLED', '').lower() == 'true':
+    twilio_enabled = os.getenv('TWILIO_ENABLED', '').lower()
+    print(f"TWILIO_ENABLED value: {twilio_enabled}")
+    print(f"TWILIO_ACCOUNT_SID: {os.getenv('TWILIO_ACCOUNT_SID', 'NOT SET')}")
+    print(f"TWILIO_FROM_NUMBER: {os.getenv('TWILIO_FROM_NUMBER', 'NOT SET')}")
+    
+    if any(val == twilio_enabled for val in ['true', '1', 'yes', 'on']):
         try:
-            from .sms_service import SMSService
+            # Create SMS service instance
             sms_service = SMSService(
                 account_sid=os.getenv('TWILIO_ACCOUNT_SID'),
                 auth_token=os.getenv('TWILIO_AUTH_TOKEN'),
                 from_number=os.getenv('TWILIO_FROM_NUMBER')
             )
+            
+            # Test the service
+            test_result = sms_service.client.api.accounts(os.getenv('TWILIO_ACCOUNT_SID')).fetch()
+            print(f"Twilio account status: {test_result.status}")
+            
+            # Set the service in notification manager
             notification_manager.sms_service = sms_service
-            print("SMS service initialized successfully")
+            print("SMS service initialized and set in notification manager")
             return True
+            
         except Exception as e:
             print(f"Failed to initialize SMS service: {str(e)}")
+            import traceback
+            print(f"Traceback: {traceback.format_exc()}")
     return False
 
 # Initialize SMS service if environment variables are available

@@ -103,10 +103,18 @@ def init_services():
         
         # Check if Twilio is enabled (case-insensitive)
         twilio_enabled_raw = os.getenv('TWILIO_ENABLED', 'false')
-        twilio_enabled = any(val == twilio_enabled_raw.lower() for val in ['true', '1', 'yes', 'on'])
-        app.logger.info(f"Twilio enabled flag: {twilio_enabled}")
         app.logger.info(f"Raw TWILIO_ENABLED value: {twilio_enabled_raw}")
         app.logger.info(f"Environment keys: {[k for k in os.environ.keys() if 'TWILIO' in k.upper()]}")
+        app.logger.info("Twilio environment variables:")
+        for key in ['TWILIO_ENABLED', 'TWILIO_ACCOUNT_SID', 'TWILIO_AUTH_TOKEN', 'TWILIO_FROM_NUMBER']:
+            value = os.getenv(key)
+            if key in ['TWILIO_ACCOUNT_SID', 'TWILIO_AUTH_TOKEN']:
+                app.logger.info(f"{key}: {'SET' if value else 'NOT SET'}")
+            else:
+                app.logger.info(f"{key}: {value}")
+        
+        twilio_enabled = any(val == twilio_enabled_raw.lower() for val in ['true', '1', 'yes', 'on'])
+        app.logger.info(f"Twilio enabled flag after parsing: {twilio_enabled}")
         
         if not twilio_enabled:
             app.logger.info("Twilio is disabled - skipping SMS service initialization")
@@ -165,7 +173,9 @@ def init_services():
                 from src.features.notification_system.code import init_sms_service
                 if init_sms_service():
                     app.logger.info("SMS service initialized successfully through notification system")
+                    global sms_service
                     sms_service = notification_manager.sms_service
+                    app.logger.info(f"Global sms_service set: {sms_service is not None}")
                     
                     # Test SMS service initialization
                     account = sms_service.client.api.accounts(required_vars['TWILIO_ACCOUNT_SID']).fetch()

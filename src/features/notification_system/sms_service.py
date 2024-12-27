@@ -51,16 +51,24 @@ class SMSService:
     def _sanitize_phone(phone: str) -> str:
         """
         Sanitize phone numbers to prevent injection.
-        Strips all non-numeric characters and ensures proper format.
+        Ensures proper E.164 format with country code.
         """
+        # If phone number already has + prefix, use it as is
+        if phone.startswith('+'):
+            print(f"Using phone number as-is: {phone}")
+            return phone
+            
+        # Otherwise, clean and format
         clean = re.sub(r'\D', '', phone)
         if len(clean) == 10:
-            return f"+1{clean}"
+            formatted = f"+1{clean}"  # Add US country code
         elif len(clean) == 11 and clean.startswith('1'):
-            return f"+{clean}"
-        elif len(clean) == 12 and clean.startswith('91'):
-            return f"+{clean}"
-        raise ValueError("Invalid phone number format")
+            formatted = f"+{clean}"  # Number already has country code
+        else:
+            raise ValueError(f"Invalid phone number format: {phone}")
+            
+        print(f"Sanitized phone number: {formatted}")
+        return formatted
         
     def validate_phone_number(self, phone: str) -> bool:
         """Validate phone number format."""
